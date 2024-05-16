@@ -131,11 +131,11 @@ class IntelRealSenseD435:
             return None, None
         # Process image
         depthImage = np.asanyarray(alignedDepthFrame.get_data())
-        depthImage = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.03), cv2.COLORMAP_JET)
+        #depthImage = cv2.applyColorMap(cv2.convertScaleAbs(depthImage, alpha=0.03), cv2.COLORMAP_JET)
         depthImageFlipped = cv2.flip(depthImage, 1)
         colorImage = np.asanyarray(colorFrame.get_data())
         colorImages = cv2.flip(colorImage, 1)
-        colorImageRGB = cv2.cvtColor(colorImages, cv2.COLOR_BGR2RGBA)
+        colorImageRGB = cv2.cvtColor(colorImages, cv2.COLOR_BGR2RGB)
 
         return colorImageRGB, depthImageFlipped
 
