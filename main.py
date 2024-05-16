@@ -1,25 +1,17 @@
 import cv2
-import os
-from cam_realsense import IntelRealSenseD435
+from cam_realsense_d400 import IntelRealSenseD435
 
 def main():
     # Configurar la cámara Intel RealSense D435
-    preset_json = "EdgeMapD435.json"
-    print(os.getcwd(),preset_json)
-    json_path = os.path.join(os.getcwd(), preset_json)
-    realsense_camera = IntelRealSenseD435(640, 480, 30)
+    realsense_camera = IntelRealSenseD435(streamResX=640, streamResY=480, fps=30, presetJSON = 'BodyScanPreset.json')
+    #realsense_camera.configurePreset()
     realsense_camera.configureCamera()
+
+    depthScale = realsense_camera.getDepthScale()
+    print(depthScale)
     realsense_camera.startCapture()
 
     try:
-        with open(json_path) as preset_json:
-            # Procesa el archivo .json aquí
-            pass
-    except FileNotFoundError:
-        print(f"El archivo {json_path} no se encuentra en el directorio actual.")
-
-    try:
-
         while True:
             # Obtener imágenes RGB y de profundidad
             color_image, depth_image = realsense_camera.getImageRGBDepth()
@@ -31,7 +23,8 @@ def main():
                 cv2.imshow('Depth Image', depth_image)
 
             # Esperar a que se presione la tecla 'q' para salir
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            key = cv2.waitKey(1)
+            if key == 27:
                 break
 
     finally:
