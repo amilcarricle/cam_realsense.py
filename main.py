@@ -28,34 +28,38 @@ def main():
 
     try:
         x_aux, y_aux, z_aux = None, None, None
-        while True:
-            # Obtener imágenes RGB y de profundidad
-            color_image, depth_image = realsense_camera.getImageRGBDepth()
 
-            # Mostrar las imágenes en ventanas separadas
+        while True:
+            color_image, depth_image = realsense_camera.getImageRGBDepth()
+            storeBookmarks = []
             if color_image is not None:
                 results = poseConfig.process(color_image)
                 markers = results.pose_landmarks
-                cont = 0
                 if markers:
                     for i in range (len(markers.landmark)):
                         x = int(markers.landmark[i].x * streamResX)
-                        y = int(markers.landmark[i].y * streamResY)
+                        y = streamResY - int(markers.landmark[i].y * streamResY)
                         if 0 <= y < streamResY and 0 <= x < streamResX:
                             z = round(depth_image[y, x] * depthScale, 2)
                             if i == 0:
                                 x_aux, y_aux, z_aux = x, y, z
                         else:
-                            x, y, z =x_aux, y_aux, z_aux # Usar valores auxiliares
-                        print(f'{i}: {x, y, z}')
-
+                            x, y, z =x_aux, y_aux, z_aux
+                        #print(f'{i}: {x, y, z}')
+                        storeBookmarks.append(x)
+                        storeBookmarks.append(y)
+                        storeBookmarks.append(z)
+                    print(f'Markers List: {storeBookmarks}')
+                    print(f'{len(storeBookmarks)}')
+                    sock.sendto(str.encode(str(storeBookmarks)), serverAddresPort)
+                    print('Envio por puerto UDP')
 
 
 
 
                 cv2.imshow('Color Image', color_image)
             if depth_image is not None:
-                depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
+                depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03  ), cv2.COLORMAP_JET)
 
                 cv2.imshow('Depth Image', depth_image)
 
