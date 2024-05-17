@@ -51,6 +51,8 @@ def main():
                         storeBookmarks.append(z)
                     print(f'Markers List: {storeBookmarks}')
                     print(f'{len(storeBookmarks)}')
+                    message = f"MARKERS:{storeBookmarks}"
+                    sock.sendto(message.encode(), serverAddresPort)
                     sock.sendto(str.encode(str(storeBookmarks)), serverAddresPort)
                     print('Envio por puerto UDP')
 
