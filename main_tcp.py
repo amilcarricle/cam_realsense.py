@@ -4,62 +4,61 @@ import socket
 import mediapipe as mp
 from cam_realsense_d400 import IntelRealSenseD435
 
-stream_res_x = 640
-stream_res_y = 480
-fps = 30
-preset_json = 'BodyScanPreset.json'
+# Configuración de la cámara
+STREAM_RES_X = 640
+STREAM_RES_Y = 480
+FPS = 30
+PRESET_JSON = 'BodyScanPreset.json'
 
-server_address = ("127.0.0.1", 5052)
+# Configuración del servidor UDP
+SERVER_ADDRESS = ("127.0.0.1", 5052)
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+# Configuración de MediaPipe Pose
 mp_pose = mp.solutions.pose
 pose_config = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7)
 
 def configureCamera():
-    camera = IntelRealSenseD435(streamResX=stream_res_x, streamResY=stream_res_y, fps=fps, presetJSON=preset_json)
+    camera = IntelRealSenseD435(streamResX=STREAM_RES_X, streamResY=STREAM_RES_Y, fps=FPS, presetJSON=PRESET_JSON)
     camera.configureCamera()
     return camera
 
 def getPoseLandmarks(image):
     return pose_config.process(image).pose_landmarks
 
-# def calculateChecksum(data):
-#     #data_encode = data.encode('utf-8')
-#     return hashlib.md5(data.encode('UTF8')).hexdigest()
-
 def calculateChecksum(data):
-    # Calcula el hash SHA-256 en lugar de MD5
     sha256 = hashlib.sha256()
     sha256.update(data.encode('UTF8'))
     return sha256.hexdigest()
 
 def verifyChecksum(data, checksum):
-    # Verifica el hash SHA-256 en lugar de MD5
     calculated_checksum = calculateChecksum(data)
     isValid = calculated_checksum.lower() == checksum.lower()
     if not isValid:
         print("NOOOOOOOO")
         print(f"Verificación de checksum fallida. Calculado: {calculated_checksum}, Esperado: {checksum}")
-    print("SIUUUUUUU")
+    else:
+        print("SIUUUUUUU")
     return isValid
 
 def sendUDPMessage(sequence_number, data):
     data_str = ','.join(map(str, data))
     checksum = calculateChecksum(data_str)
-    verifyChecksum(data_str, checksum)
-    message = f"{sequence_number}:{data_str}:{checksum}\n"
-    print(f"Checksum Leng: {len(checksum)}")
-    print(f"Sending: {message}")  # Debugging line
-    sock.sendto(message.encode(), server_address)
+    if verifyChecksum(data_str, checksum):
+        message = f"{sequence_number}:{data_str}:{checksum}\n"
+        print(f"Sending: {message}")  # Línea de depuración
+        sock.sendto(message.encode(), SERVER_ADDRESS)
+    else:
+        print("Checksum verification failed, not sending the message.")
 
 def drawPoseMarkersOnDepthImage(depth_image, markers, depth_scale):
     for landmark in markers.landmark[:11]:
-        x = int(landmark.x * stream_res_x)
-        y = stream_res_y - int(landmark.y * stream_res_y)
-        if 0 <= y < stream_res_y and 0 <= x < stream_res_x:
+        x = int(landmark.x * STREAM_RES_X)
+        y = STREAM_RES_Y - int(landmark.y * STREAM_RES_Y)
+        if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
             z = round(depth_image[y, x] * depth_scale, 2)
-            cv2.circle(depth_image, (x, stream_res_y - y), 5, (0, 255, 255), -1)
-            cv2.putText(depth_image, f'{z:.2f}', (x, stream_res_y - y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (0, 255, 255), -1)
+            cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
 def main():
     global sequence_number
@@ -81,9 +80,9 @@ def main():
 
                 if markers:
                     for i, landmark in enumerate(markers.landmark[:11]):
-                        x = int(landmark.x * stream_res_x)
-                        y = stream_res_y - int(landmark.y * stream_res_y)
-                        if 0 <= y < stream_res_y and 0 <= x < stream_res_x:
+                        x = int(landmark.x * STREAM_RES_X)
+                        y = STREAM_RES_Y - int(landmark.y * STREAM_RES_Y)
+                        if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
                             z = round(depth_image[y, x] * depth_scale, 2)
                             x_aux, y_aux, z_aux = x, y, z
                         else:
@@ -91,7 +90,6 @@ def main():
                         store_bookmarks.extend([x, y, z])
                     sequence_number += 1
                     sendUDPMessage(sequence_number, store_bookmarks)
-
                     drawPoseMarkersOnDepthImage(depth_image, markers, depth_scale)
 
                 cv2.imshow('Color Image', color_image)
