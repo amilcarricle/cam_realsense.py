@@ -4,6 +4,13 @@ import socket
 import mediapipe as mp
 import numpy as np
 from cam_realsense_d400 import IntelRealSenseD435
+from dataclasses import dataclass
+
+@dataclass
+class Bookmark:
+    x: int
+    y: int
+    z: float
 
 # Camera configuration
 STREAM_RES_X = 640
@@ -72,40 +79,68 @@ def image_smoothing(point_x, point_y, depth_image, depth_scale):
             depth.append(z)
     if depth:
         return round(np.median(depth), 2)
-    return 0
+    else:
+        return 0
+
+def calculate_distance(x1, y1, x2, y2):
+    """Calculates the Euclidean distance between two points."""
+    return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
 def correct_values(bookmarks):
     """Corrects the depth values of the bookmarks."""
-    if len(bookmarks) % 3 == 0:
-        z_vals = [bookmarks[i*3 + 2] for i in range(11)]
+    if len(bookmarks) == 17:
+        print("The number of values sent is verified")
+        z_vals = [bookmark.z for bookmark in bookmarks[:11]]
         median_z = round(np.median(z_vals), 2)
 
-        # Right arm correction
-        if bookmarks[11*3 + 2] > median_z or bookmarks[11*3 + 2] == 0:
-            bookmarks[11*3 + 2] = round(median_z * 1.13, 2)
-        if bookmarks[11*3 + 2] > bookmarks[15*3 + 2] and bookmarks[13*3 + 2] == 0:
-            bookmarks[13*3 + 2] = round((bookmarks[11*3 + 2] + bookmarks[15*3 + 2]) / 2, 2)
-        if bookmarks[15*3 + 2] < bookmarks[11*3 + 2] and bookmarks[13*3 + 2] > bookmarks[11*3 + 2]:
-            bookmarks[13*3 + 2] = round((bookmarks[11*3 + 2] + bookmarks[15*3 + 2]) / 2, 2)
-        if bookmarks[15*3 + 2] > bookmarks[11*3 + 2] * 1.05:
-            bookmarks[15*3 + 2] = round(bookmarks[13*3 + 2] * 0.3, 2)
+        # Right shoulder correction
+        if bookmarks[11].z > median_z or bookmarks[11].z == 0:
+            bookmarks[11].z = round(median_z * 1.13, 2)
+        # Left shoulder correction
+        if bookmarks[12].z > median_z or bookmarks[12].z == 0:
+            bookmarks[12].z = round(median_z * 1.13, 2)
 
-        # Left arm correction
-        if bookmarks[12*3 + 2] > median_z or bookmarks[12*3 + 2] == 0:
-            bookmarks[12*3 + 2] = round(median_z * 1.13, 2)
-        if bookmarks[12*3 + 2] > bookmarks[16*3 + 2] and bookmarks[14*3 + 2] == 0:
-            bookmarks[14*3 + 2] = round((bookmarks[12*3 + 2] + bookmarks[16*3 + 2]) / 2, 2)
-        if bookmarks[16*3 + 2] < bookmarks[12*3 + 2] and bookmarks[14*3 + 2] > bookmarks[12*3 + 2]:
-            bookmarks[14*3 + 2] = round((bookmarks[12*3 + 2] + bookmarks[16*3 + 2]) / 2, 2)
-        if bookmarks[16*3 + 2] > bookmarks[12*3 + 2] * 1.05:
-            bookmarks[16*3 + 2] = round(bookmarks[14*3 + 2] * 0.3, 2)
+        # Correction of values for extended arm
+        if bookmarks[13].z == 0:
+            bookmarks[13].z = round(bookmarks[11].z * 0.60, 2)
+        if bookmarks[13].z == 0 and bookmarks[15].z == 0:
+            bookmarks[13].z = round(bookmarks[11].z * 0.60, 2)
+            bookmarks[15].z = round(bookmarks[11].z * 0.40, 2)
 
-    return bookmarks
+        if bookmarks[11].z != 0 and bookmarks[15].z == 0 and bookmarks[13].z == 0:
+            bookmarks[13].z = round(bookmarks[11].z * 1.24, 2)
+            bookmarks[15].z = round(bookmarks[11].z * 0.8, 2)
 
+        if bookmarks[15].z < bookmarks[11].z and bookmarks[13].z > bookmarks[11].z:
+            bookmarks[13].z = round((bookmarks[11].z + bookmarks[15].z) / 2, 2)
+        if bookmarks[15].z > bookmarks[11].z * 1.05:
+            bookmarks[15].z = round(bookmarks[13].z * 0.3, 2)
+        if bookmarks[13].z > bookmarks[11].z:
+            bookmarks[13].z = round(bookmarks[13].z * 0.95, 2)
+
+        # Left side corrections
+        if bookmarks[12].z > bookmarks[16].z and bookmarks[14].z == 0:
+            bookmarks[14].z = round((bookmarks[12].z + bookmarks[16].z) / 2, 2)
+        if bookmarks[16].z < bookmarks[12].z and bookmarks[14].z > bookmarks[12].z:
+            bookmarks[14].z = round((bookmarks[12].z + bookmarks[16].z) / 2, 2)
+        if bookmarks[16].z > bookmarks[12].z * 1.05:
+            bookmarks[16].z = round(bookmarks[14].z * 0.3, 2)
+
+        # Calculate distances between specific markers
+        dist_shoulder_wrist_right = calculate_distance(bookmarks[11].x, bookmarks[11].y,
+                                                       bookmarks[15].x, bookmarks[15].y)
+        dist_shoulder_wrist_left = calculate_distance(bookmarks[12].x, bookmarks[12].y,
+                                                      bookmarks[16].x, bookmarks[16].y)
+        print(f"Distance Right Shoulder to Wrist: {dist_shoulder_wrist_right}")
+        print(f"Distance Left Shoulder to Wrist: {dist_shoulder_wrist_left}")
+
+        return bookmarks
+    else:
+        print("The number of values sent by bookmark store is incorrect")
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
-    for i in range(0, len(bookmarks), 3):
-        x, y, z = bookmarks[i], bookmarks[i + 1], bookmarks[i + 2]
+    for bookmark in bookmarks:
+        x, y, z = bookmark.x, bookmark.y, bookmark.z
         if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
             cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (255, 255, 255), -1)
             cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
@@ -119,7 +154,8 @@ def draw_pose_markers_on_depth_image(depth_image, markers, depth_scale):
         if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
             z = round(depth_image[y, x] * depth_scale, 2)
             cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (0, 255, 255), -1)
-            cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 125, 255), 2)
 
 def main():
     sequence_number = 1
@@ -147,10 +183,11 @@ def main():
                             x_aux, y_aux, z_aux = x, y, z
                         else:
                             x, y, z = x_aux, y_aux, z_aux
-                        store_bookmarks.extend([x, y, z])
+                        store_bookmarks.append(Bookmark(x, y, z))
                     bookmarks = correct_values(store_bookmarks)
                     sequence_number += 1
-                    send_udp_message(sequence_number, bookmarks)
+                    send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
+                                                       (bookmark.x, bookmark.y, bookmark.z)])
                     draw_pose_markers_on_depth_image(depth_image, markers, depth_scale)
                     draw_pose_markers_on_depth_image_from_bookmarks(color_image, bookmarks)
                 cv2.imshow('Color Image', color_image)
