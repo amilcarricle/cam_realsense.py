@@ -84,7 +84,7 @@ def image_smoothing(point_x, point_y, depth_image, depth_scale):
 
 def calculate_distance(x1, y1, x2, y2):
     """Calculates the Euclidean distance between two points."""
-    return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    return round(np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
 
 def correct_values(bookmarks):
     """Corrects the depth values of the bookmarks."""
@@ -92,56 +92,53 @@ def correct_values(bookmarks):
         print("The number of values sent is verified")
         z_vals = [bookmark.z for bookmark in bookmarks[:11]]
         median_z = round(np.median(z_vals), 2)
-
+        print(f"Median Z : {median_z}")
         # Right shoulder correction
-        if bookmarks[11].z > median_z or bookmarks[11].z == 0:
+        if bookmarks[11].z > 1.26 * median_z or bookmarks[11].z == 0:
             bookmarks[11].z = round(median_z * 1.13, 2)
         # Left shoulder correction
-        if bookmarks[12].z > median_z or bookmarks[12].z == 0:
+        if bookmarks[12].z > 1.26 * median_z or bookmarks[12].z == 0:
             bookmarks[12].z = round(median_z * 1.13, 2)
-
-        # Correction of values for extended arm
+        # When, during the flexion of the arm, the hand overlaps the shoulder,
+        # the marker changes its distance to the wrong one.
+        if bookmarks[13].z < 0.4 * bookmarks[11].z and bookmarks[11].z != 0 and bookmarks[12].z != 0 and (bookmarks[11].z / bookmarks[12].z) < 0.7:
+            bookmarks[11].z = bookmarks[12].z
+            bookmarks[13].z = round(0.6 * bookmarks[11].z, 2)
         if bookmarks[13].z == 0:
-            bookmarks[13].z = round(bookmarks[11].z * 0.60, 2)
-        if bookmarks[13].z == 0 and bookmarks[15].z == 0:
-            bookmarks[13].z = round(bookmarks[11].z * 0.60, 2)
-            bookmarks[15].z = round(bookmarks[11].z * 0.40, 2)
+            bookmarks[13].z = round(0.6 * bookmarks[11].z, 2)
+        if bookmarks[13].z > 1.2 * median_z:
+            bookmarks[13].z = round(median_z * 1.13, 2)
+        if bookmarks[15].z == 0:
+            bookmarks[15].z = round(bookmarks[11].z * 0.5, 2)
+        if bookmarks[15].z > 1.2 * median_z:
+            bookmarks[15].z = round(median_z * 1.13, 2)
+        if bookmarks[15].z > bookmarks[13].z and bookmarks[13].z != 0:
+            bookmarks[15].z = round(bookmarks[11].z * 0.2, 2)
 
-        if bookmarks[11].z != 0 and bookmarks[15].z == 0 and bookmarks[13].z == 0:
-            bookmarks[13].z = round(bookmarks[11].z * 1.24, 2)
-            bookmarks[15].z = round(bookmarks[11].z * 0.8, 2)
-
-        if bookmarks[15].z < bookmarks[11].z and bookmarks[13].z > bookmarks[11].z:
-            bookmarks[13].z = round((bookmarks[11].z + bookmarks[15].z) / 2, 2)
-        if bookmarks[15].z > bookmarks[11].z * 1.05:
-            bookmarks[15].z = round(bookmarks[13].z * 0.3, 2)
-        if bookmarks[13].z > bookmarks[11].z:
-            bookmarks[13].z = round(bookmarks[13].z * 0.95, 2)
-
-        # Left side corrections
-        if bookmarks[12].z > bookmarks[16].z and bookmarks[14].z == 0:
-            bookmarks[14].z = round((bookmarks[12].z + bookmarks[16].z) / 2, 2)
-        if bookmarks[16].z < bookmarks[12].z and bookmarks[14].z > bookmarks[12].z:
-            bookmarks[14].z = round((bookmarks[12].z + bookmarks[16].z) / 2, 2)
-        if bookmarks[16].z > bookmarks[12].z * 1.05:
-            bookmarks[16].z = round(bookmarks[14].z * 0.3, 2)
-
-        # Calculate distances between specific markers
-        dist_shoulder_wrist_right = calculate_distance(bookmarks[11].x, bookmarks[11].y,
-                                                       bookmarks[15].x, bookmarks[15].y)
-        dist_shoulder_wrist_left = calculate_distance(bookmarks[12].x, bookmarks[12].y,
-                                                      bookmarks[16].x, bookmarks[16].y)
-        print(f"Distance Right Shoulder to Wrist: {dist_shoulder_wrist_right}")
-        print(f"Distance Left Shoulder to Wrist: {dist_shoulder_wrist_left}")
-
-        return bookmarks
+        if bookmarks[14].z < 0.4 * bookmarks[12].z and bookmarks[12].z != 0 and bookmarks[11].z != 0 and (bookmarks[12].z / bookmarks[11].z) < 0.7:
+            bookmarks[12].z = bookmarks[11].z
+            bookmarks[14].z = round(0.6 * bookmarks[12].z, 2)
+        if bookmarks[14].z == 0:
+            bookmarks[14].z = round(0.6 * bookmarks[12].z, 2)
+        if bookmarks[14].z > 1.2 * median_z:
+            bookmarks[14].z = round(median_z * 1.13, 2)
+        if bookmarks[16].z == 0:
+            bookmarks[16].z = round(bookmarks[12].z * 0.5, 2)
+        if bookmarks[16].z > 1.2 * median_z:
+            bookmarks[16].z = round(median_z * 1.13, 2)
+        if bookmarks[16].z > bookmarks[14].z and bookmarks[14].z != 0:
+            bookmarks[16].z = round(bookmarks[12].z * 0.2, 2)
     else:
-        print("The number of values sent by bookmark store is incorrect")
+        print("The number of values sent is incorrect")
+    return bookmarks
+
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
     for bookmark in bookmarks:
         x, y, z = bookmark.x, bookmark.y, bookmark.z
         if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
+            x = int(x)
+            y = int(y)
             cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (255, 255, 255), -1)
             cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (125, 125, 255), 2)
@@ -207,3 +204,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
