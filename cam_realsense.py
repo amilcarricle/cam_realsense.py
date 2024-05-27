@@ -1,11 +1,12 @@
 import json
 import threading
+
 import pyrealsense2 as rs
 import numpy as np
 import cv2
 
 class IntelRealSenseD435:
-    def __init__(self, streamResX, streamResY, fps, presetJSON = None):
+    def __init__(self, streamResX, streamResY, fps, presetJSON):
 
         self.streamResX = streamResX
         self.streamResY = streamResY
@@ -21,36 +22,17 @@ class IntelRealSenseD435:
     def configureCamera(self):
 
         #preset = json.loads(preset_json)
-        if self.presetJSON:
-            with open(self.presetJSON) as f:
-                preset = json.load(f)
-            self.configurePreset(preset)
-        else:
-            self.configurePreset('high_accuracy')
-            #self.configurePreset('hand')
         self.config.enable_stream(rs.stream.depth, self.streamResX, self.streamResY, rs.format.z16, self.fps)
         self.config.enable_stream(rs.stream.color, self.streamResX, self.streamResY, rs.format.bgr8, self.fps)
         self.pipeline.start(self.config)
-        #self.configurePreset('high_accuracy')
+        self.configurePreset('high_accuracy')
         self.depthScale = self.getDepthScale()
-
 
     def configurePreset(self, preset):
 
-        if isinstance(preset, dict):
-            profile = self.pipeline.get_active_profile()
-            depthSensor = profile.get_device().first_depth_sensor()
-            for option, value in preset.items():
-                depthSensor.set_options(option, value)
-        else:
-            profile = self.pipeline.get_active_profile()
-            depthSensor = profile.get_device().first_depth_sensor()
-            if preset == 'high_accuracy':
-                depthSensor.set_option(rs.option.visual_preset, rs.rs400_visual_preset.high_accuracy)
-            elif preset == 'high_density':
-                depthSensor.set_option(rs.option.visual_preset, rs.rs400_visual_preset.high_density)
-            else:
-                raise ValueError("Invalid Preset")
+        profile = self.pipeline.get_active_profile()
+        depthSensor = profile.get_device().first_depth_sensor()
+        self.setSensorOptions(depthSensor, preset)
 
     def setSensorOptions(self, sensor, preset):
 
@@ -67,12 +49,10 @@ class IntelRealSenseD435:
         return depth_sensor.get_depth_scale()
 
     def startCapture(self):
-
         self.running = True
         threading.Thread(target= self.captureThread, daemon= True).start()
 
     def captureThread(self):
-
         alignTo = rs.stream.color
         align = rs.align(alignTo)
         while self.running:
