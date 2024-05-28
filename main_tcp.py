@@ -88,7 +88,7 @@ def calculate_distance(x1, y1, x2, y2):
 
 def correct_values(bookmarks):
     """Corrects the depth values of the bookmarks."""
-    if len(bookmarks) == 17:
+    if len(bookmarks) == 25:
         print("The number of values sent is verified")
         z_vals = [bookmark.z for bookmark in bookmarks[:11]]
         median_z = round(np.median(z_vals), 2)
@@ -172,7 +172,7 @@ def main():
                 markers = get_pose_landmarks(color_image)
 
                 if markers:
-                    for i, landmark in enumerate(markers.landmark[:17]):
+                    for i, landmark in enumerate(markers.landmark[:25]):
                         x = int(landmark.x * STREAM_RES_X)
                         y = STREAM_RES_Y - int(landmark.y * STREAM_RES_Y)
                         if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
