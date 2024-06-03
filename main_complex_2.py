@@ -7,7 +7,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
-
+#hola
 from cam_realsense_d400 import IntelRealSenseD435
 from dataclasses import dataclass
 
