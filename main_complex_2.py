@@ -7,7 +7,6 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
-#hola
 from cam_realsense_d400 import IntelRealSenseD435
 from dataclasses import dataclass
 
@@ -24,7 +23,7 @@ FPS = 30
 PRESET_JSON = 'ShortRangePreset.json'
 
 #Segmentation mask
-BG_COLOR = (0, 0, 0)
+BG_COLOR = (125, 125, 125)
 MASK_COLOR = (255, 255, 255)
 
 # UDP server configuration
@@ -32,14 +31,17 @@ SERVER_ADDRESS = ("127.0.0.1", 5052)
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 # MediaPipe Pose configuration
-mp_pose = mp.solutions.pose
-# Model selection (0: Lite, 1: Full, 2: Heavy)
-pose_config = mp_pose.Pose(model_complexity=2, min_detection_confidence=0.6, min_tracking_confidence=0.6)
-
-#Model Path
-POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/pose_landmarker_heavy.task"
+#Model Path: Model selection (Lite, Full, Heavy)
+#POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_lite.task"
+#POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_full.task"
+POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_heavy.task"
 
 #Create a PoseLandmarker object
+"""
+ATTENTION!!!!!
+Aclaracion, esta forma de crear los objetos difiere de los ejemplos mostrados por parte de google. Buscar en gitHub
+un ejemplo donde se explica este cambio
+"""
 base_options = python.BaseOptions(model_asset_buffer=open(POSE_LANDMARKER_MODEL_PATH, "rb").read())
 options = vision.PoseLandmarkerOptions(base_options=base_options, output_segmentation_masks=True)
 detector = vision.PoseLandmarker.create_from_options(options)
@@ -49,13 +51,16 @@ detector = vision.PoseLandmarker.create_from_options(options)
 
 def configure_camera():
     """Configures and returns the Intel RealSense camera."""
-    camera = IntelRealSenseD435(streamResX=STREAM_RES_X, streamResY=STREAM_RES_Y, fps=FPS, presetJSON=PRESET_JSON)
+    camera = IntelRealSenseD435(streamResX=STREAM_RES_X, streamResY=STREAM_RES_Y,
+                                fps=FPS, presetJSON=PRESET_JSON)
     camera.configureCamera()
     return camera
 
 def get_pose_landmarks(image):
     """Gets the pose landmarks from a given image using MediaPipe."""
-    return pose_config.process(image).pose_landmarks
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
+    result = detector.detect(mp_image)
+    return result.pose_landmarks, result.segmentation_masks
 
 def calculate_checksum(data):
     """Calculates and returns the SHA-256 checksum of the provided data."""
@@ -68,7 +73,8 @@ def verify_checksum(data, checksum):
     calculated_checksum = calculate_checksum(data)
     is_valid = calculated_checksum.lower() == checksum.lower()
     if not is_valid:
-        print(f"Checksum verification failed. Calculated: {calculated_checksum}, Expected: {checksum}")
+        print(f"Checksum verification failed. Calculated: {calculated_checksum}, "
+              f"Expected: {checksum}")
     else:
         print("Checksum verification successful.")
     return is_valid
@@ -86,22 +92,13 @@ def send_udp_message(sequence_number, data):
 
 def image_smoothing(point_x, point_y, depth_image, depth_scale):
     """Applies smoothing to the depth image at the specified point."""
-    buffer = [(2, -2), (2, -1), (2, 0), (2, 1), (2, 2),
-              (1, -2), (1, -1), (1, 0), (1, 1), (1, 2),
-              (0, -2), (0, -1), (0, 0), (0, 1), (0, 2),
-              (-1, -2), (-1, -1), (-1, 0), (-1, 1), (-1, 2),
-              (-2, -2), (-2, -1), (-2, 0), (-2, 1), (-2, 2)]
-
-    depth = []
-    for dy, dx in buffer:
-        ny, nx = point_y + dy, point_x + dx
-        if 0 <= ny < STREAM_RES_Y and 0 <= nx < STREAM_RES_X:
-            z = depth_image[ny, nx] * depth_scale
-            depth.append(z)
-    if depth:
-        return round(np.median(depth), 2)
-    else:
-        return 0
+    buffer_size = 8
+    depth_values = depth_image[max(0, point_y - buffer_size):
+                               min(STREAM_RES_Y, point_y + buffer_size + 1),
+                               max(0, point_x - buffer_size):
+                               min(STREAM_RES_X, point_x + buffer_size + 1)]
+    z_values = depth_values.flatten() * depth_scale
+    return round(np.median(z_values), 2)
 
 def calculate_distance(x1, y1, x2, y2):
     """Calculates the Euclidean distance between two points."""
@@ -109,7 +106,7 @@ def calculate_distance(x1, y1, x2, y2):
 
 def correct_values(bookmarks):
     """Corrects the depth values of the bookmarks."""
-    if len(bookmarks) == 25:
+    if len(bookmarks) == 33:
         print("The number of values sent is verified")
         z_vals = [bookmark.z for bookmark in bookmarks[:11]]
         median_z = round(np.median(z_vals), 2)
@@ -164,6 +161,8 @@ def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
             cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (125, 125, 255), 2)
 
+
+
 def draw_pose_markers_on_depth_image(depth_image, markers, depth_scale):
     """Draws pose markers on the depth image."""
     for landmark in markers.landmark[:17]:
@@ -174,6 +173,7 @@ def draw_pose_markers_on_depth_image(depth_image, markers, depth_scale):
             cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (0, 255, 255), -1)
             cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 125, 255), 2)
+
 
 def main():
     sequence_number = 1
@@ -190,38 +190,66 @@ def main():
             store_bookmarks = []
 
             if color_image is not None:
-                markers = get_pose_landmarks(color_image)
+                pose_landmarks_list, segmentation_mask = get_pose_landmarks(color_image)
 
-                if markers:
-                    for i, landmark in enumerate(markers.landmark[:25]):
-                        x = int(landmark.x * STREAM_RES_X)
-                        y = STREAM_RES_Y - int(landmark.y * STREAM_RES_Y)
-                        if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
-                            z = image_smoothing(x, y, depth_image, depth_scale)
-                            x_aux, y_aux, z_aux = x, y, z
-                        else:
-                            x, y, z = x_aux, y_aux, z_aux
-                        store_bookmarks.append(Bookmark(x, y, z))
+                if pose_landmarks_list:
+                    #print(f"Markers: {pose_landmarks_list}")
+                    for markers in pose_landmarks_list:
+                        for idx, landmark in enumerate(markers):
+                            x = int(landmark.x * STREAM_RES_X)
+                            y = STREAM_RES_Y - int(landmark.y * STREAM_RES_Y)
+                            if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
+                                #z = image_smoothing(x, y, depth_image, depth_scale)
+                                z = round(depth_image[y, x] * depth_scale, 2)
+                                x_aux, y_aux, z_aux = x, y, z
+                            else:
+                                x, y, z = x_aux, y_aux, z_aux
+                            store_bookmarks.append(Bookmark(x, y, z))
+
+                            # Print the coordinates
+                            #print(f"Landmark {idx}: (x={x}, y={y}, z={z})")
+
                     bookmarks = correct_values(store_bookmarks)
+                    #print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
+                    # Send UDP message with bookmarks
                     send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
                                                        (bookmark.x, bookmark.y, bookmark.z)])
-                    draw_pose_markers_on_depth_image(depth_image, markers, depth_scale)
-                    draw_pose_markers_on_depth_image_from_bookmarks(color_image, bookmarks)
-                cv2.imshow('Color Image', color_image)
-            if depth_image is not None:
-                depth_image = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.5), cv2.COLORMAP_JET)
-                cv2.imshow('Depth Image', depth_image)
+                    # Draw pose markers on depth image
+                    draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks)
+                #Apply segmentation mask to color image
+                if segmentation_mask is not None:
+                    mask = np.asarray(segmentation_mask[0].numpy_view())
+                    mask = cv2.resize(mask, (STREAM_RES_X, STREAM_RES_Y))
+                    mask = (mask * 255).astype(np.uint8)  # Ensure mask is in uint8 format
+                    mask = np.stack((mask,) * 3, axis=-1)
+                    mask = cv2.bitwise_and(mask, np.array(MASK_COLOR, dtype=np.uint8))
 
-            if cv2.waitKey(1) == 27:  # Press 'Esc' to exit
+                    fg_image = cv2.bitwise_and(color_image, mask)
+                    bg_image = np.zeros(color_image.shape, dtype=np.uint8)
+                    bg_image[:] = BG_COLOR
+                    bg_image = cv2.bitwise_and(bg_image, cv2.bitwise_not(mask))
+                    color_image = cv2.add(fg_image, bg_image)
+
+                cv2.imshow('Color Image', color_image)
+
+            if depth_image is not None:
+                # Apply color map and show depth image
+                depth_image_colored = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.5), cv2.COLORMAP_JET)
+                cv2.imshow('Depth Image', depth_image_colored)
+
+            # Exit if 'Esc' key is pressed
+            if cv2.waitKey(1) == 27:
                 break
 
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
+        # Stop camera capture, close OpenCV windows, and close socket
         realsense_camera.stopCapture()
         cv2.destroyAllWindows()
         sock.close()
+
 
 if __name__ == "__main__":
     main()
