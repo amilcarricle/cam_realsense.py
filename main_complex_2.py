@@ -33,8 +33,8 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # MediaPipe Pose configuration
 #Model Path: Model selection (Lite, Full, Heavy)
 #POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_lite.task"
-#POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_full.task"
-POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_heavy.task"
+POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_full.task"
+#POSE_LANDMARKER_MODEL_PATH = "C:/Users/Ricle/Desktop/Amilcar/CamRSManager/model packages/pose_landmarker_heavy.task"
 
 #Create a PoseLandmarker object
 """
@@ -45,9 +45,6 @@ un ejemplo donde se explica este cambio
 base_options = python.BaseOptions(model_asset_buffer=open(POSE_LANDMARKER_MODEL_PATH, "rb").read())
 options = vision.PoseLandmarkerOptions(base_options=base_options, output_segmentation_masks=True)
 detector = vision.PoseLandmarker.create_from_options(options)
-# base_options = python.BaseOptions(model_asset_path =POSE_LANDMARKER_MODEL_PATH)
-# options = vision.PoseLandmarkerOptions(base_options=base_options, output_segmentation_masks=True)
-# detector = vision.PoseLandmarker.create_from_options(options)
 
 def configure_camera():
     """Configures and returns the Intel RealSense camera."""
@@ -104,51 +101,80 @@ def calculate_distance(x1, y1, x2, y2):
     """Calculates the Euclidean distance between two points."""
     return round(np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
 
-def correct_values(bookmarks):
+def correct_values(bookmarks, depth_image, depth_scale, color_image):
     """Corrects the depth values of the bookmarks."""
-    if len(bookmarks) == 33:
+    if bookmarks:
         print("The number of values sent is verified")
-        z_vals = [bookmark.z for bookmark in bookmarks[:11]]
+        # Calculate initial depth values
+        bookmarks[0].z = image_smoothing(bookmarks[0].x, bookmarks[0].y, depth_image, depth_scale)
+        bookmarks[9].z = image_smoothing(bookmarks[9].x, bookmarks[9].y, depth_image, depth_scale)
+        bookmarks[10].z = image_smoothing(bookmarks[10].x, bookmarks[10].y, depth_image, depth_scale)
+
+        z_vals = [bookmarks[0].z, bookmarks[9].z, bookmarks[10].z]
         median_z = round(np.median(z_vals), 2)
         print(f"Median Z : {median_z}")
-        # Right shoulder correction
-        if bookmarks[11].z > 1.26 * median_z or bookmarks[11].z == 0:
-            bookmarks[11].z = round(median_z * 1.13, 2)
-        # Left shoulder correction
-        if bookmarks[12].z > 1.26 * median_z or bookmarks[12].z == 0:
-            bookmarks[12].z = round(median_z * 1.13, 2)
-        # When, during the flexion of the arm, the hand overlaps the shoulder,
-        # the marker changes its distance to the wrong one.
-        if bookmarks[13].z < 0.4 * bookmarks[11].z and bookmarks[11].z != 0 and bookmarks[12].z != 0 and (bookmarks[11].z / bookmarks[12].z) < 0.7:
-            bookmarks[11].z = bookmarks[12].z
-            bookmarks[13].z = round(0.6 * bookmarks[11].z, 2)
-        if bookmarks[13].z == 0:
-            bookmarks[13].z = round(0.6 * bookmarks[11].z, 2)
-        if bookmarks[13].z > 1.2 * median_z:
-            bookmarks[13].z = round(median_z * 1.13, 2)
-        if bookmarks[15].z == 0:
-            bookmarks[15].z = round(bookmarks[11].z * 0.5, 2)
-        if bookmarks[15].z > 1.2 * median_z:
-            bookmarks[15].z = round(median_z * 1.13, 2)
-        if bookmarks[15].z > bookmarks[13].z and bookmarks[13].z != 0:
-            bookmarks[15].z = round(bookmarks[11].z * 0.2, 2)
 
-        if bookmarks[14].z < 0.4 * bookmarks[12].z and bookmarks[12].z != 0 and bookmarks[11].z != 0 and (bookmarks[12].z / bookmarks[11].z) < 0.7:
-            bookmarks[12].z = bookmarks[11].z
-            bookmarks[14].z = round(0.6 * bookmarks[12].z, 2)
-        if bookmarks[14].z == 0:
-            bookmarks[14].z = round(0.6 * bookmarks[12].z, 2)
-        if bookmarks[14].z > 1.2 * median_z:
-            bookmarks[14].z = round(median_z * 1.13, 2)
-        if bookmarks[16].z == 0:
-            bookmarks[16].z = round(bookmarks[12].z * 0.5, 2)
-        if bookmarks[16].z > 1.2 * median_z:
-            bookmarks[16].z = round(median_z * 1.13, 2)
-        if bookmarks[16].z > bookmarks[14].z and bookmarks[14].z != 0:
-            bookmarks[16].z = round(bookmarks[12].z * 0.2, 2)
+        # Right shoulder correction
+        if bookmarks[11].z > 1.26 * median_z or bookmarks[11].z == 0 or bookmarks[11].z < median_z:
+            displacement_x = 0
+            flag = True
+            while flag and displacement_x <= STREAM_RES_X:
+                x = bookmarks[11].x - displacement_x
+                bookmarks[11].z = image_smoothing(x, bookmarks[11].y, depth_image, depth_scale)
+                if bookmarks[11].z > 1.26 * median_z or bookmarks[11].z == 0 or bookmarks[11].z < median_z:
+                    displacement_x += 10
+                    #print("AUN FUERA DE ESCALA")
+                else:
+                    flag = False
+                    #print("EN ESCALA")
+                # Check if displacement_x is within image bounds
+                if x < bookmarks[12].x:
+                    #print("Fuera de los límites de la imagen.")
+                    break
+        # Left shoulder correction
+        if bookmarks[12].z > 1.26 * median_z or bookmarks[12].z == 0 or bookmarks[12].z < median_z:
+            displacement_x = 0
+            flag = True
+            while flag and displacement_x <= STREAM_RES_X:
+                x = bookmarks[12].x + displacement_x
+                bookmarks[12].z = image_smoothing(x, bookmarks[12].y, depth_image, depth_scale)
+                if bookmarks[12].z > 1.26 * median_z or bookmarks[12].z == 0 or bookmarks[12].z < median_z:
+                    displacement_x += 10
+                    #print("AUN FUERA DE ESCALA")
+                else:
+                    flag = False
+                    #print("EN ESCALA")
+                # Check if displacement_x is within image bounds
+                if x > bookmarks[11].x:
+                    #print("Fuera de los límites de la imagen.")
+                    break
+
+        #Left Elbow correction
+        if bookmarks[13].z >= bookmarks[11].z and bookmarks[13].x <= STREAM_RES_X:
+            flag = True
+            print("HOLA")
+            displacement_x = 1
+            count = 0
+            pixel= color_image[bookmarks[13].y, bookmarks[13].x]
+            if (pixel == BG_COLOR).all():
+                pixel_l = color_image[bookmarks[13].y + 30 + 10, bookmarks[13].x - 2]
+                pixel_r = color_image[bookmarks[13].y - 30, bookmarks[13].x + 50]
+                print(f"Pixel izquierdo : {pixel_l}")
+                print(f"Pixel derecho : {pixel_r}")
+
+            print(f"COLOR: {pixel}")
+
+            midle_point = int(count / 2)
+            # Calculate new depth value after finding the correct x coordinate
+            bookmarks[13].z = image_smoothing(midle_point, bookmarks[13].y, depth_image,
+                                              depth_scale)
+        else:
+            print("Elbow depth value within acceptable range.")
+            #print(f"COLOR: {color_image[bookmarks[13].y, bookmarks[13].x]}")
     else:
         print("The number of values sent is incorrect")
     return bookmarks
+
 
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
@@ -209,27 +235,28 @@ def main():
                             # Print the coordinates
                             #print(f"Landmark {idx}: (x={x}, y={y}, z={z})")
 
-                    bookmarks = correct_values(store_bookmarks)
-                    #print(f"Len of Bookmarks: {len(bookmarks)}")
+                    #Apply segmentation mask to color image
+                    if segmentation_mask is not None:
+                        mask = np.asarray(segmentation_mask[0].numpy_view())
+                        mask = cv2.resize(mask, (STREAM_RES_X, STREAM_RES_Y))
+                        mask = (mask * 255).astype(np.uint8)  # Ensure mask is in uint8 format
+                        mask = np.stack((mask,) * 3, axis=-1)
+                        mask = cv2.bitwise_and(mask, np.array(MASK_COLOR, dtype=np.uint8))
+
+                        fg_image = cv2.bitwise_and(color_image, mask)
+                        bg_image = np.zeros(color_image.shape, dtype=np.uint8)
+                        bg_image[:] = BG_COLOR
+                        bg_image = cv2.bitwise_and(bg_image, cv2.bitwise_not(mask))
+                        color_image = cv2.add(fg_image, bg_image)
+
+                    bookmarks = correct_values(store_bookmarks, depth_image, depth_scale, color_image)
+                    # print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
                     # Send UDP message with bookmarks
                     send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
                                                        (bookmark.x, bookmark.y, bookmark.z)])
                     # Draw pose markers on depth image
                     draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks)
-                #Apply segmentation mask to color image
-                if segmentation_mask is not None:
-                    mask = np.asarray(segmentation_mask[0].numpy_view())
-                    mask = cv2.resize(mask, (STREAM_RES_X, STREAM_RES_Y))
-                    mask = (mask * 255).astype(np.uint8)  # Ensure mask is in uint8 format
-                    mask = np.stack((mask,) * 3, axis=-1)
-                    mask = cv2.bitwise_and(mask, np.array(MASK_COLOR, dtype=np.uint8))
-
-                    fg_image = cv2.bitwise_and(color_image, mask)
-                    bg_image = np.zeros(color_image.shape, dtype=np.uint8)
-                    bg_image[:] = BG_COLOR
-                    bg_image = cv2.bitwise_and(bg_image, cv2.bitwise_not(mask))
-                    color_image = cv2.add(fg_image, bg_image)
 
                 cv2.imshow('Color Image', color_image)
 
@@ -253,4 +280,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
