@@ -19,7 +19,7 @@ class Bookmark:
 # Camera configuration
 STREAM_RES_X = 640
 STREAM_RES_Y = 480
-FPS = 30
+FPS = 15
 PRESET_JSON = 'ShortRangePreset.json'
 
 #Segmentation mask
@@ -101,76 +101,191 @@ def calculate_distance(x1, y1, x2, y2):
     """Calculates the Euclidean distance between two points."""
     return round(np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
 
-def correct_values(bookmarks, depth_image, depth_scale, color_image):
+def is_nearby(marker1, marker2, threshold=30):
+    """Checks if two markers are within a certain distance threshold."""
+    distance = np.sqrt((marker1.x - marker2.x) ** 2 + (marker1.y - marker2.y) ** 2)
+    return distance < threshold
+# Function to check if points are aligned in a straight line (indicating full extension)
+def is_full_extension(p1, p2, p3, tolerance=5):
+    """Check if three points are aligned within a certain tolerance."""
+    return abs((p3.y - p1.y) * (p2.x - p1.x) - (p2.y - p1.y) * (p3.x - p1.x)) < tolerance
+
+# Function to check if depth values are too close (indicating a flexion)
+def is_flexion(z_shoulder, z_elbow, z_wrist, threshold=0.1):
+    return abs(z_shoulder - z_elbow) < threshold and abs(z_elbow - z_wrist) < threshold
+
+# Function to check if the markers are close in the XY plane
+def is_markers_close(p1, p2, p3, distance_threshold=30):
+    distance_shoulder_elbow = np.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
+    distance_elbow_wrist = np.sqrt((p2.x - p3.x) ** 2 + (p2.y - p3.y) ** 2)
+    return distance_shoulder_elbow < distance_threshold and distance_elbow_wrist < distance_threshold
+
+
+def correct_values(bookmarks, depth_image, depth_scale):
     """Corrects the depth values of the bookmarks."""
     if bookmarks:
         print("The number of values sent is verified")
+        #Face markers
+        nose = bookmarks[0]
+        mouth_right = bookmarks[9]
+        mouth_left = bookmarks[10]
+        #Right arm markers
+        right_shoulder = bookmarks[11]
+        right_elbow = bookmarks[13]
+        right_wrist = bookmarks[15]
+        #Left arm markers
+        left_shoulder = bookmarks[12]
+        left_elbow = bookmarks[14]
+        left_wrist = bookmarks[16]
+        #Hips markers
+        right_hip = bookmarks[23]
+        left_hip = bookmarks[24]
         # Calculate initial depth values
-        bookmarks[0].z = image_smoothing(bookmarks[0].x, bookmarks[0].y, depth_image, depth_scale)
-        bookmarks[9].z = image_smoothing(bookmarks[9].x, bookmarks[9].y, depth_image, depth_scale)
-        bookmarks[10].z = image_smoothing(bookmarks[10].x, bookmarks[10].y, depth_image, depth_scale)
+        nose.z = image_smoothing(nose.x, nose.y, depth_image, depth_scale)
+        mouth_right.z = image_smoothing(mouth_right.x, mouth_right.y, depth_image, depth_scale)
+        mouth_left.z = image_smoothing(mouth_left.x, mouth_left.y, depth_image, depth_scale)
 
-        z_vals = [bookmarks[0].z, bookmarks[9].z, bookmarks[10].z]
+        z_vals = [nose.z, mouth_right.z, mouth_left.z]
         median_z = round(np.median(z_vals), 2)
         print(f"Median Z : {median_z}")
 
         # Right shoulder correction
-        if bookmarks[11].z > 1.26 * median_z or bookmarks[11].z == 0 or bookmarks[11].z < median_z:
+        if right_shoulder.z > 1.26 * median_z or right_shoulder.z == 0 or right_shoulder.z < median_z:
             displacement_x = 0
             flag = True
             while flag and displacement_x <= STREAM_RES_X:
-                x = bookmarks[11].x - displacement_x
-                bookmarks[11].z = image_smoothing(x, bookmarks[11].y, depth_image, depth_scale)
-                if bookmarks[11].z > 1.26 * median_z or bookmarks[11].z == 0 or bookmarks[11].z < median_z:
+                x = right_shoulder.x - displacement_x
+                right_shoulder.z = image_smoothing(x, right_shoulder.y, depth_image, depth_scale)
+                if right_shoulder.z > 1.26 * median_z or right_shoulder.z == 0 or right_shoulder.z < median_z:
                     displacement_x += 10
-                    #print("AUN FUERA DE ESCALA")
                 else:
                     flag = False
-                    #print("EN ESCALA")
-                # Check if displacement_x is within image bounds
-                if x < bookmarks[12].x:
-                    #print("Fuera de los límites de la imagen.")
+                if x < left_shoulder.x:
                     break
+
         # Left shoulder correction
-        if bookmarks[12].z > 1.26 * median_z or bookmarks[12].z == 0 or bookmarks[12].z < median_z:
+        if left_shoulder.z > 1.26 * median_z or left_shoulder.z == 0 or left_shoulder.z < median_z:
             displacement_x = 0
             flag = True
             while flag and displacement_x <= STREAM_RES_X:
-                x = bookmarks[12].x + displacement_x
-                bookmarks[12].z = image_smoothing(x, bookmarks[12].y, depth_image, depth_scale)
-                if bookmarks[12].z > 1.26 * median_z or bookmarks[12].z == 0 or bookmarks[12].z < median_z:
+                x = left_shoulder.x + displacement_x
+                left_shoulder.z = image_smoothing(x, left_shoulder.y, depth_image, depth_scale)
+                if left_shoulder.z > 1.26 * median_z or left_shoulder.z == 0 or left_shoulder.z < median_z:
                     displacement_x += 10
-                    #print("AUN FUERA DE ESCALA")
                 else:
                     flag = False
-                    #print("EN ESCALA")
-                # Check if displacement_x is within image bounds
-                if x > bookmarks[11].x:
-                    #print("Fuera de los límites de la imagen.")
+                if x > right_shoulder.x:
                     break
 
-        #Left Elbow correction
-        if bookmarks[13].z >= bookmarks[11].z and bookmarks[13].x <= STREAM_RES_X:
-            flag = True
-            print("HOLA")
-            displacement_x = 1
-            count = 0
-            pixel= color_image[bookmarks[13].y, bookmarks[13].x]
-            if (pixel == BG_COLOR).all():
-                pixel_l = color_image[bookmarks[13].y + 30 + 10, bookmarks[13].x - 2]
-                pixel_r = color_image[bookmarks[13].y - 30, bookmarks[13].x + 50]
-                print(f"Pixel izquierdo : {pixel_l}")
-                print(f"Pixel derecho : {pixel_r}")
+        if right_wrist.z > right_shoulder.z:
+            if is_nearby(right_shoulder, right_hip):
+                print("Left wrist is near the left hip, correcting depth value...")
+                right_wrist.z = right_shoulder.z
+                print(f"Assigned wrist Z value from shoulder: {right_shoulder.z}")
+            else:
+                print("Correcting left wrist depth value due to scattering...")
+                right_wrist.z = right_shoulder.z
+                print(f"Assigned wrist Z value from shoulder: {right_shoulder.z}")
+        else:
+            print("Wrist depth value within acceptable range.")
 
-            print(f"COLOR: {pixel}")
-
-            midle_point = int(count / 2)
-            # Calculate new depth value after finding the correct x coordinate
-            bookmarks[13].z = image_smoothing(midle_point, bookmarks[13].y, depth_image,
-                                              depth_scale)
+        # Right elbow correction
+        if right_elbow.z == 0:
+            print("Correcting left elbow depth value due to scattering...")
+            x, y = right_elbow.x, right_elbow.y
+            # Apply median filter to smooth depth value around the elbow
+            elbow_depth_values = []
+            for dx in range(-3, 4):
+                for dy in range(-3, 4):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
+                        elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
+            if elbow_depth_values:
+                filtered_z = round(np.median(elbow_depth_values), 2)
+                right_elbow.z = filtered_z
+                print(f"Filtered Z value for left elbow: {filtered_z}")
+            # Interpolation using shoulder and wrist
+            interpolated_z = (right_shoulder.z + right_wrist.z) / 2.0
+            if abs(interpolated_z - right_elbow.z) > 0.1:  # Threshold for considering significant scattering
+                right_elbow.z = round(interpolated_z, 2)
+                print(f"Interpolated Z value for left elbow: {interpolated_z}")
+        if right_elbow.z >= right_shoulder.z and right_elbow.x <= STREAM_RES_X:
+            print("Correcting left elbow depth value due to scattering...")
+            x, y = right_elbow.x, right_elbow.y
+            # Apply median filter to smooth depth value around the elbow
+            elbow_depth_values = []
+            for dx in range(-3, 4):
+                for dy in range(-3, 4):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
+                        elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
+            if elbow_depth_values:
+                filtered_z = round(np.median(elbow_depth_values), 2)
+                right_elbow.z = filtered_z
+                print(f"Filtered Z value for left elbow: {filtered_z}")
+            # Interpolation using shoulder and wrist
+            interpolated_z = (right_shoulder.z + right_wrist.z) / 2.0
+            if abs(interpolated_z - right_elbow.z) > 0.1:  # Threshold for considering significant scattering
+                right_elbow.z = round(interpolated_z, 2)
+                print(f"Interpolated Z value for left elbow: {interpolated_z}")
         else:
             print("Elbow depth value within acceptable range.")
-            #print(f"COLOR: {color_image[bookmarks[13].y, bookmarks[13].x]}")
+        #------------------------------------------
+        if left_wrist.z > left_shoulder.z:
+            if is_nearby(left_shoulder, left_hip):
+                print("Left wrist is near the left hip, correcting depth value...")
+                left_wrist.z = left_shoulder.z
+                print(f"Assigned wrist Z value from shoulder: {left_shoulder.z}")
+            else:
+                print("Correcting left wrist depth value due to scattering...")
+                left_wrist.z = left_shoulder.z
+                print(f"Assigned wrist Z value from shoulder: {left_shoulder.z}")
+        else:
+            print("Wrist depth value within acceptable range.")
+        # Left elbow correction
+        if left_elbow.z == 0:
+            print("Correcting left elbow depth value due to scattering...")
+            x, y = left_elbow.x, left_elbow.y
+            # Apply median filter to smooth depth value around the elbow
+            elbow_depth_values = []
+            for dx in range(-3, 4):
+                for dy in range(-3, 4):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
+                        elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
+            if elbow_depth_values:
+                filtered_z = round(np.median(elbow_depth_values), 2)
+                left_elbow.z = filtered_z
+                print(f"Filtered Z value for left elbow: {filtered_z}")
+            # Interpolation using shoulder and wrist
+            interpolated_z = (left_shoulder.z + left_wrist.z) / 2.0
+            if abs(interpolated_z - left_elbow.z) > 0.1:  # Threshold for considering significant scattering
+                left_elbow.z = round(interpolated_z, 2)
+                print(f"Interpolated Z value for left elbow: {interpolated_z}")
+        if left_elbow.z >= left_shoulder.z and left_elbow.x <= STREAM_RES_X:
+            print("Correcting left elbow depth value due to scattering...")
+            x, y = left_elbow.x, left_elbow.y
+            # Apply median filter to smooth depth value around the elbow
+            elbow_depth_values = []
+            for dx in range(-3, 4):
+                for dy in range(-3, 4):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
+                        elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
+            if elbow_depth_values:
+                filtered_z = round(np.median(elbow_depth_values), 2)
+                left_elbow.z = filtered_z
+                print(f"Filtered Z value for left elbow: {filtered_z}")
+            # Interpolation using shoulder and wrist
+            interpolated_z = (left_shoulder.z + left_wrist.z) / 2.0
+            if abs(interpolated_z - left_elbow.z) > 0.1:  # Threshold for considering significant scattering
+                left_elbow.z = round(interpolated_z, 2)
+                print(f"Interpolated Z value for left elbow: {interpolated_z}")
+        else:
+            print("Elbow depth value within acceptable range.")
+
+        #-----------------------------------------
+
     else:
         print("The number of values sent is incorrect")
     return bookmarks
@@ -249,7 +364,7 @@ def main():
                         bg_image = cv2.bitwise_and(bg_image, cv2.bitwise_not(mask))
                         color_image = cv2.add(fg_image, bg_image)
 
-                    bookmarks = correct_values(store_bookmarks, depth_image, depth_scale, color_image)
+                    bookmarks = correct_values(store_bookmarks, depth_image, depth_scale)
                     # print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
                     # Send UDP message with bookmarks
