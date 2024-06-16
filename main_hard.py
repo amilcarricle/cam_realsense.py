@@ -16,10 +16,13 @@ class Bookmark:
     y: int
     z: float
 
+# Anatomic distance
+DIST_SHOULDER_ELBOW = 0.30
+DIST_ELBOW_WRIST = 0.25
 # Camera configuration
 STREAM_RES_X = 640
 STREAM_RES_Y = 480
-FPS = 15
+FPS = 30
 PRESET_JSON = 'ShortRangePreset.json'
 
 #Segmentation mask
@@ -33,8 +36,8 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 # MediaPipe Pose configuration
 #Model Path: Model selection (Lite, Full, Heavy)
 #POSE_LANDMARKER_MODEL_PATH = "C:/Users/amilc/OneDrive/Escritorio/REpo/Tasks/pose_landmarker_lite.task"
-POSE_LANDMARKER_MODEL_PATH = "C:/Users/amilc/OneDrive/Escritorio/REpo/model packages/pose_landmarker_full.task"
-#POSE_LANDMARKER_MODEL_PATH = "C:/Users/amilc/OneDrive/Escritorio/REpo/model packages/pose_landmarker_heavy.task"
+POSE_LANDMARKER_MODEL_PATH = "pose_landmarker_full.task"
+#POSE_LANDMARKER_MODEL_PATH = "pose_landmarker_heavy.task"
 
 #Create a PoseLandmarker object
 """
@@ -120,24 +123,24 @@ def is_markers_close(p1, p2, p3, distance_threshold=30):
     distance_elbow_wrist = np.sqrt((p2.x - p3.x) ** 2 + (p2.y - p3.y) ** 2)
     return distance_shoulder_elbow < distance_threshold and distance_elbow_wrist < distance_threshold
 
-
+# Correction of abnormal values due to scattering
 def correct_values(bookmarks, depth_image, depth_scale):
     """Corrects the depth values of the bookmarks."""
     if bookmarks:
         print("The number of values sent is verified")
-        #Face markers
+        # Face markers
         nose = bookmarks[0]
         mouth_right = bookmarks[9]
         mouth_left = bookmarks[10]
-        #Right arm markers
+        # Right arm markers
         right_shoulder = bookmarks[11]
         right_elbow = bookmarks[13]
         right_wrist = bookmarks[15]
-        #Left arm markers
+        # Left arm markers
         left_shoulder = bookmarks[12]
         left_elbow = bookmarks[14]
         left_wrist = bookmarks[16]
-        #Hips markers
+        # Hips markers
         right_hip = bookmarks[23]
         left_hip = bookmarks[24]
         # Calculate initial depth values
@@ -179,11 +182,11 @@ def correct_values(bookmarks, depth_image, depth_scale):
 
         if right_wrist.z > right_shoulder.z:
             if is_nearby(right_shoulder, right_hip):
-                print("Left wrist is near the left hip, correcting depth value...")
+                print("Right wrist is near the right hip, correcting depth value...")
                 right_wrist.z = right_shoulder.z
                 print(f"Assigned wrist Z value from shoulder: {right_shoulder.z}")
             else:
-                print("Correcting left wrist depth value due to scattering...")
+                print("Correcting right wrist depth value due to scattering...")
                 right_wrist.z = right_shoulder.z
                 print(f"Assigned wrist Z value from shoulder: {right_shoulder.z}")
         else:
@@ -191,7 +194,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
 
         # Right elbow correction
         if right_elbow.z == 0:
-            print("Correcting left elbow depth value due to scattering...")
+            print("Correcting right elbow depth value due to scattering...")
             x, y = right_elbow.x, right_elbow.y
             # Apply median filter to smooth depth value around the elbow
             elbow_depth_values = []
@@ -203,14 +206,15 @@ def correct_values(bookmarks, depth_image, depth_scale):
             if elbow_depth_values:
                 filtered_z = round(np.median(elbow_depth_values), 2)
                 right_elbow.z = filtered_z
-                print(f"Filtered Z value for left elbow: {filtered_z}")
+                print(f"Filtered Z value for right elbow: {filtered_z}")
             # Interpolation using shoulder and wrist
             interpolated_z = (right_shoulder.z + right_wrist.z) / 2.0
             if abs(interpolated_z - right_elbow.z) > 0.1:  # Threshold for considering significant scattering
                 right_elbow.z = round(interpolated_z, 2)
-                print(f"Interpolated Z value for left elbow: {interpolated_z}")
+                print(f"Interpolated Z value for right elbow: {interpolated_z}")
+
         if right_elbow.z >= right_shoulder.z and right_elbow.x <= STREAM_RES_X:
-            print("Correcting left elbow depth value due to scattering...")
+            print("Correcting right elbow depth value due to scattering...")
             x, y = right_elbow.x, right_elbow.y
             # Apply median filter to smooth depth value around the elbow
             elbow_depth_values = []
@@ -222,15 +226,16 @@ def correct_values(bookmarks, depth_image, depth_scale):
             if elbow_depth_values:
                 filtered_z = round(np.median(elbow_depth_values), 2)
                 right_elbow.z = filtered_z
-                print(f"Filtered Z value for left elbow: {filtered_z}")
+                print(f"Filtered Z value for right elbow: {filtered_z}")
             # Interpolation using shoulder and wrist
             interpolated_z = (right_shoulder.z + right_wrist.z) / 2.0
             if abs(interpolated_z - right_elbow.z) > 0.1:  # Threshold for considering significant scattering
                 right_elbow.z = round(interpolated_z, 2)
-                print(f"Interpolated Z value for left elbow: {interpolated_z}")
+                print(f"Interpolated Z value for right elbow: {interpolated_z}")
         else:
             print("Elbow depth value within acceptable range.")
-        #------------------------------------------
+
+        # Left wrist correction
         if left_wrist.z > left_shoulder.z:
             if is_nearby(left_shoulder, left_hip):
                 print("Left wrist is near the left hip, correcting depth value...")
@@ -242,6 +247,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
                 print(f"Assigned wrist Z value from shoulder: {left_shoulder.z}")
         else:
             print("Wrist depth value within acceptable range.")
+
         # Left elbow correction
         if left_elbow.z == 0:
             print("Correcting left elbow depth value due to scattering...")
@@ -262,6 +268,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
             if abs(interpolated_z - left_elbow.z) > 0.1:  # Threshold for considering significant scattering
                 left_elbow.z = round(interpolated_z, 2)
                 print(f"Interpolated Z value for left elbow: {interpolated_z}")
+
         if left_elbow.z >= left_shoulder.z and left_elbow.x <= STREAM_RES_X:
             print("Correcting left elbow depth value due to scattering...")
             x, y = left_elbow.x, left_elbow.y
@@ -284,12 +291,34 @@ def correct_values(bookmarks, depth_image, depth_scale):
         else:
             print("Elbow depth value within acceptable range.")
 
-        #-----------------------------------------
+        # Check if right shoulder and elbow are very close
+        if is_nearby(right_shoulder, right_elbow) or is_nearby(right_elbow, right_wrist):
+            print("Right arm appears to be fully extended, estimating Z values based on left arm distances...")
+            right_shoulder.z = left_shoulder.z
+            right_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+            right_elbow.x = right_shoulder.x
+            right_elbow.y = right_shoulder.y
+            right_wrist.z = round(right_elbow.z - DIST_ELBOW_WRIST, 2)
+            right_wrist.x = right_shoulder.x
+            right_wrist.y = right_shoulder.y
+            print(f"Estimated right shoulder Z: {right_shoulder.z}")
+            print(f"Estimated right elbow Z: {right_elbow.z}")
+            print(f"Estimated right wrist Z: {right_wrist.z}")
+        # Check if left shoulder and elbow are very close
+        if is_nearby(left_shoulder, left_elbow) and is_nearby(left_elbow, left_wrist):
+            print("Left arm appears to be fully extended, estimating Z values based on Right arm distances...")
+            left_shoulder.z = right_shoulder.z
+            left_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+            left_elbow.x, left_elbow.y = left_shoulder.x, left_shoulder.y
+            left_wrist.z = round(left_elbow.z - DIST_ELBOW_WRIST, 2)
+            left_wrist.x, left_wrist.y = left_shoulder.x, left_shoulder.y
+            print(f"Estimated right shoulder Z: {right_shoulder.z}")
+            print(f"Estimated right elbow Z: {right_elbow.z}")
+            print(f"Estimated right wrist Z: {right_wrist.z}")
 
     else:
         print("The number of values sent is incorrect")
     return bookmarks
-
 
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
