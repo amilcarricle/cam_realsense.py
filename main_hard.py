@@ -290,35 +290,62 @@ def correct_values(bookmarks, depth_image, depth_scale):
                 print(f"Interpolated Z value for left elbow: {interpolated_z}")
         else:
             print("Elbow depth value within acceptable range.")
-
-        # Check if right shoulder and elbow are very close
-        if is_nearby(right_shoulder, right_elbow) or is_nearby(right_elbow, right_wrist):
-            print("Right arm appears to be fully extended, estimating Z values based on left arm distances...")
+        # Right elbow overlapping right shoulder
+        if is_nearby(right_shoulder, right_elbow):
+            print("Right elbow overlapping right shoulder...")
             right_shoulder.z = left_shoulder.z
             right_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-            right_elbow.x = right_shoulder.x
-            right_elbow.y = right_shoulder.y
-            right_wrist.z = round(right_elbow.z - DIST_ELBOW_WRIST, 2)
-            right_wrist.x = right_shoulder.x
-            right_wrist.y = right_shoulder.y
+            right_elbow.x, right_elbow.y = right_shoulder.x, right_shoulder.y
+            right_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
             print(f"Estimated right shoulder Z: {right_shoulder.z}")
             print(f"Estimated right elbow Z: {right_elbow.z}")
-            print(f"Estimated right wrist Z: {right_wrist.z}")
-        # Check if left shoulder and elbow are very close
-        if is_nearby(left_shoulder, left_elbow) and is_nearby(left_elbow, left_wrist):
-            print("Left arm appears to be fully extended, estimating Z values based on Right arm distances...")
+            # Shoulder elbow distance greater than the preset value
+            if right_elbow.z >= (right_shoulder.z / 2):
+                right_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+            # Correction of wrist values
+            if right_elbow.y < right_wrist.y:
+                right_wrist.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+                #right_wrist.z = round(right_elbow.z - DIST_ELBOW_WRIST, 2)
+                if right_wrist.z < 0:
+                    right_wrist.z = 0
+                right_wrist.x, right_wrist.y = right_shoulder.x, right_shoulder.x
+                print(f"Estimated right wrist Z: {right_wrist.z}")
+
+        # Left elbow overlapping right shoulder
+        if is_nearby(left_shoulder, left_elbow):
+            print("Left elbow overlapping left shoulder...")
             left_shoulder.z = right_shoulder.z
             left_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
             left_elbow.x, left_elbow.y = left_shoulder.x, left_shoulder.y
-            left_wrist.z = round(left_elbow.z - DIST_ELBOW_WRIST, 2)
-            left_wrist.x, left_wrist.y = left_shoulder.x, left_shoulder.y
-            print(f"Estimated right shoulder Z: {right_shoulder.z}")
-            print(f"Estimated right elbow Z: {right_elbow.z}")
-            print(f"Estimated right wrist Z: {right_wrist.z}")
+            left_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+            print(f"Estimated left shoulder Z: {left_shoulder.z}")
+            print(f"Estimated left elbow Z: {left_elbow.z}")
+            # Shoulder elbow distance greater than the preset value
+            if left_elbow.z >= (left_shoulder.z / 2):
+                left_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+            # Correction of wrist values
+            if left_elbow.y < left_wrist.y:
+                left_wrist.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+                # right_wrist.z = round(right_elbow.z - DIST_ELBOW_WRIST, 2)
+                if left_wrist.z < 0:
+                    left_wrist.z = 0
+                left_wrist.x, left_wrist.y = left_shoulder.x, left_shoulder.x
+                print(f"Estimated right wrist Z: {left_wrist.z}")
 
+        # Correction of wrist values
+        if left_elbow.z < left_wrist.z:
+            left_wrist.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW - DIST_ELBOW_WRIST, 2)
+        # Shoulder elbow distance greater than the preset value
+        if left_elbow.z >= (left_shoulder.z / 2):
+            left_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+
+        # Correction of hips values
+        if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
+            right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
     else:
         print("The number of values sent is incorrect")
     return bookmarks
+
 
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
@@ -351,16 +378,16 @@ def main():
     depth_scale = realsense_camera.getDepthScale()
     print(f'Depth Scale: {depth_scale}')
     realsense_camera.startCapture()
-
+    buffer_bookmarks = []
     try:
         x_aux, y_aux, z_aux = None, None, None
 
         while True:
             color_image, depth_image = realsense_camera.getImageRGBDepth()
             store_bookmarks = []
-
+            segmentation_mask = None
             if color_image is not None:
-                pose_landmarks_list, segmentation_mask = get_pose_landmarks(color_image)
+                pose_landmarks_list, _ = get_pose_landmarks(color_image)
 
                 if pose_landmarks_list:
                     #print(f"Markers: {pose_landmarks_list}")
@@ -378,7 +405,7 @@ def main():
 
                             # Print the coordinates
                             #print(f"Landmark {idx}: (x={x}, y={y}, z={z})")
-
+                    draw_pose_markers_on_depth_image_from_bookmarks(depth_image, store_bookmarks)
                     #Apply segmentation mask to color image
                     if segmentation_mask is not None:
                         mask = np.asarray(segmentation_mask[0].numpy_view())
@@ -394,13 +421,26 @@ def main():
                         color_image = cv2.add(fg_image, bg_image)
 
                     bookmarks = correct_values(store_bookmarks, depth_image, depth_scale)
+                    print("HOLA")
+                    if sequence_number == 1:
+                        print("HOLA MUNDO")
+                        for bm in bookmarks:
+                            buffer_bookmarks.append(bm.x)
+                            buffer_bookmarks.append(bm.y)
+                            buffer_bookmarks.append(bm.z)
+
+                    else:
+                        for i in range(len(bookmarks)//3):
+                            if bookmarks[i*3 + 2] == 0:
+                                bookmarks[i*3 + 2] = buffer_bookmarks[i*3 + 2]
+                        buffer_bookmarks = bookmarks
                     # print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
                     # Send UDP message with bookmarks
                     send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
                                                        (bookmark.x, bookmark.y, bookmark.z)])
                     # Draw pose markers on depth image
-                    draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks)
+                    draw_pose_markers_on_depth_image_from_bookmarks(color_image, bookmarks)
 
                 cv2.imshow('Color Image', color_image)
 
