@@ -175,7 +175,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
         # Calculate initial depth values
         nose.z = image_smoothing(nose.x, nose.y, depth_image, depth_scale)
         eye_right.z = image_smoothing(eye_right.x, eye_right.y, depth_image, depth_scale)
-        eye_left.z = image_smoothing(eye_left.x, eye_left.y,depth_image, depth_scale)
+        eye_left.z = image_smoothing(eye_left.x, eye_left.y, depth_image, depth_scale)
         mouth_right.z = image_smoothing(mouth_right.x, mouth_right.y, depth_image, depth_scale)
         mouth_left.z = image_smoothing(mouth_left.x, mouth_left.y, depth_image, depth_scale)
 
@@ -190,7 +190,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
         # Left shoulder correction
         left_shoulder.z, _ = shoulder_correction(left_shoulder, right_shoulder, median_z, depth_image, depth_scale)
 
-       # Smoothing other markers
+        # Smoothing other markers
         right_elbow.z = image_smoothing(right_elbow.x, right_elbow.y, depth_image, depth_scale)
         right_wrist.z = image_smoothing(right_wrist.x, right_wrist.y, depth_image, depth_scale)
         right_hip.z = image_smoothing(right_hip.x, right_hip.y, depth_image, depth_scale)
@@ -199,210 +199,96 @@ def correct_values(bookmarks, depth_image, depth_scale):
         left_hip.z = image_smoothing(left_hip.x, left_hip.y, depth_image, depth_scale)
 
         angle = round(angle_arm(right_shoulder, right_elbow, right_wrist), 2)
-        # right_forearm = calculate_distance(right_shoulder.x, right_shoulder.y, right_elbow.x, right_elbow.y)
-        # right_arm = calculate_distance(right_elbow.x, right_elbow.y, right_wrist.x, right_wrist.y)
-        # print(f"Forearm: {right_forearm}")
-        # print(f"Arm: {right_arm}")
-        # print(f"Relation forearm / arm : {right_forearm / right_arm}")
+
         if 135 <= angle and not is_nearby(right_shoulder, right_wrist):
             print(f"{angle}° Right arm fully extended...")
-            if right_shoulder.z >= right_elbow.z >= right_wrist.z:
-                print("It OK!")
-            elif 1.1 * right_shoulder.z < right_wrist.z:
-                print("It's not OK")
-                if 0.8 * right_shoulder.z <= right_elbow.z <= 1.2 * right_shoulder.z:
-                    right_wrist.z = round((right_shoulder.z + right_elbow.z) / 2.0, 2)
-                else:
+            # Wrist correction
+            if right_shoulder.z * 1.2 < right_wrist.z:
+                print(f"Right wrist Z {right_wrist.z}")
+                right_wrist.z = right_shoulder.z
+                print(f"Right wrist Z correct {right_wrist.z}")
+                if right_shoulder.z * 1.2 <= right_elbow.z:
+                    print(f"Right elbow Z {right_elbow.z}")
                     right_elbow.z = right_shoulder.z
-                    right_wrist.z = round((right_shoulder.z + right_elbow.z) / 2.0, 2)
+                    print(f"Right wrist Z correct {right_elbow.z}")
             elif right_wrist.z == 0:
-                if 0.8 * right_shoulder.z <= right_elbow.z <= 1.2 * right_shoulder.z:
+                if right_elbow.z <= right_shoulder.z * 1.2:
+                    print("Interpolated right wrist")
                     right_wrist.z = round((right_shoulder.z + right_elbow.z) / 2.0, 2)
-                else:
-                    right_elbow.z = right_shoulder.z
-                    right_wrist.z = round((right_shoulder.z + right_elbow.z) / 2.0, 2)
-            elif right_elbow.z >= right_shoulder.z:
-                if 0.8* right_shoulder.z < right_wrist.z <= 1.1 * right_shoulder.z:
-                    right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2.0, 2)
-                else:
-                    right_elbow.z = right_shoulder.z
-                    right_wrist.z = right_shoulder.z
+            elif right_wrist.z <= right_shoulder.z * 1.2 and right_shoulder.z * 1.2 < right_elbow.z:
+                print("Interpolated elbow")
+                print(f"Elbow {right_elbow.z}")
+                right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
+                print(f"Elbow correct: {right_elbow.z}")
+            if right_shoulder.z * 1.2 < right_wrist.z:
+                right_wrist.z = right_shoulder.z
+            if right_shoulder.z * 1.2 < right_elbow.z:
+                right_elbow.z = right_shoulder.z
 
-        elif 45 <= angle <135 and not is_nearby(right_shoulder, right_wrist):
+        elif 45 <= angle < 135 and not is_nearby(right_shoulder, right_wrist):
             print(f"{angle}° Right arm moderately flexed...")
 
-            if right_shoulder.y < right_wrist.y:
-                if right_shoulder.y * 0.4 <= right_elbow.y <= right_shoulder.y * 1.2:
-                    print("SAY HELLO TO MY LITTLE FRIEND")
-            elif right_shoulder.y > right_wrist.y:
-                print("Wrist under the shoulder")
-                if is_nearby(right_wrist, right_hip):
-                    print("Mano a la cadera")
-        elif angle < 45:
-            print(f"{angle}° Right arm flexed...")
+            if right_shoulder.x * 0.9 < right_elbow.x < right_shoulder.x * 1.2 and right_elbow.y < right_wrist.y:
+                print("Overlaping elbow shoulder")
+                right_shoulder.z = left_shoulder.z
+                right_elbow.x = right_shoulder.x * 1.1
+                right_elbow.y = right_shoulder.y
+                if right_elbow.z == 0 and 2 * DIST_SHOULDER_ELBOW < right_shoulder.z:
+                    right_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+                else:
+                    print("Alejese de la camara")
 
-        # if right_wrist.z > right_shoulder.z:
-        #     if is_nearby(right_shoulder, right_hip):
-        #         print("Right wrist is near the right hip, correcting depth value...")
-        #         right_wrist.z = right_shoulder.z
-        #         print(f"Assigned wrist Z value from shoulder: {right_shoulder.z}")
-        #     else:
-        #         print("Correcting right wrist depth value due to scattering...")
-        #         right_wrist.z = right_shoulder.z
-        #         print(f"Assigned wrist Z value from shoulder: {right_shoulder.z}")
-        # else:
-        #     print("Wrist depth value within acceptable range.")
-        #
-        # # Right elbow correction
-        # if right_elbow.z == 0:
-        #     print("Correcting right elbow depth value due to scattering...")
-        #     x, y = right_elbow.x, right_elbow.y
-        #     # Apply median filter to smooth depth value around the elbow
-        #     elbow_depth_values = []
-        #     for dx in range(-3, 4):
-        #         for dy in range(-3, 4):
-        #             nx, ny = x + dx, y + dy
-        #             if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
-        #                 elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
-        #     if elbow_depth_values:
-        #         filtered_z = round(np.median(elbow_depth_values), 2)
-        #         right_elbow.z = filtered_z
-        #         print(f"Filtered Z value for right elbow: {filtered_z}")
-        #     # Interpolation using shoulder and wrist
-        #     interpolated_z = (right_shoulder.z + right_wrist.z) / 2.0
-        #     if abs(interpolated_z - right_elbow.z) > 0.1:  # Threshold for considering significant scattering
-        #         right_elbow.z = round(interpolated_z, 2)
-        #         print(f"Interpolated Z value for right elbow: {interpolated_z}")
-        #
-        # if right_elbow.z >= right_shoulder.z and right_elbow.x <= STREAM_RES_X:
-        #     print("Correcting right elbow depth value due to scattering...")
-        #     x, y = right_elbow.x, right_elbow.y
-        #     # Apply median filter to smooth depth value around the elbow
-        #     elbow_depth_values = []
-        #     for dx in range(-3, 4):
-        #         for dy in range(-3, 4):
-        #             nx, ny = x + dx, y + dy
-        #             if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
-        #                 elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
-        #     if elbow_depth_values:
-        #         filtered_z = round(np.median(elbow_depth_values), 2)
-        #         right_elbow.z = filtered_z
-        #         print(f"Filtered Z value for right elbow: {filtered_z}")
-        #     # Interpolation using shoulder and wrist
-        #     interpolated_z = (right_shoulder.z + right_wrist.z) / 2.0
-        #     if abs(interpolated_z - right_elbow.z) > 0.1:  # Threshold for considering significant scattering
-        #         right_elbow.z = round(interpolated_z, 2)
-        #         print(f"Interpolated Z value for right elbow: {interpolated_z}")
-        # else:
-        #     print("Elbow depth value within acceptable range.")
-        #
-        # # Left wrist correction
-        # if left_wrist.z > left_shoulder.z:
-        #     if is_nearby(left_shoulder, left_hip):
-        #         print("Left wrist is near the left hip, correcting depth value...")
-        #         left_wrist.z = left_shoulder.z
-        #         print(f"Assigned wrist Z value from shoulder: {left_shoulder.z}")
-        #     else:
-        #         print("Correcting left wrist depth value due to scattering...")
-        #         left_wrist.z = left_shoulder.z
-        #         print(f"Assigned wrist Z value from shoulder: {left_shoulder.z}")
-        # else:
-        #     print("Wrist depth value within acceptable range.")
-        #
-        # # Left elbow correction
-        # if left_elbow.z == 0:
-        #     print("Correcting left elbow depth value due to scattering...")
-        #     x, y = left_elbow.x, left_elbow.y
-        #     # Apply median filter to smooth depth value around the elbow
-        #     elbow_depth_values = []
-        #     for dx in range(-3, 4):
-        #         for dy in range(-3, 4):
-        #             nx, ny = x + dx, y + dy
-        #             if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
-        #                 elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
-        #     if elbow_depth_values:
-        #         filtered_z = round(np.median(elbow_depth_values), 2)
-        #         left_elbow.z = filtered_z
-        #         print(f"Filtered Z value for left elbow: {filtered_z}")
-        #     # Interpolation using shoulder and wrist
-        #     interpolated_z = (left_shoulder.z + left_wrist.z) / 2.0
-        #     if abs(interpolated_z - left_elbow.z) > 0.1:  # Threshold for considering significant scattering
-        #         left_elbow.z = round(interpolated_z, 2)
-        #         print(f"Interpolated Z value for left elbow: {interpolated_z}")
-        #
-        # if left_elbow.z >= left_shoulder.z and left_elbow.x <= STREAM_RES_X:
-        #     print("Correcting left elbow depth value due to scattering...")
-        #     x, y = left_elbow.x, left_elbow.y
-        #     # Apply median filter to smooth depth value around the elbow
-        #     elbow_depth_values = []
-        #     for dx in range(-3, 4):
-        #         for dy in range(-3, 4):
-        #             nx, ny = x + dx, y + dy
-        #             if 0 <= nx < STREAM_RES_X and 0 <= ny < STREAM_RES_Y:
-        #                 elbow_depth_values.append(depth_image[ny, nx] * depth_scale)
-        #     if elbow_depth_values:
-        #         filtered_z = round(np.median(elbow_depth_values), 2)
-        #         left_elbow.z = filtered_z
-        #         print(f"Filtered Z value for left elbow: {filtered_z}")
-        #     # Interpolation using shoulder and wrist
-        #     interpolated_z = (left_shoulder.z + left_wrist.z) / 2.0
-        #     if abs(interpolated_z - left_elbow.z) > 0.1:  # Threshold for considering significant scattering
-        #         left_elbow.z = round(interpolated_z, 2)
-        #         print(f"Interpolated Z value for left elbow: {interpolated_z}")
-        # else:
-        #     print("Elbow depth value within acceptable range.")
-        # # Right elbow overlapping right shoulder
-        # if is_nearby(right_shoulder, right_elbow):
-        #     print("Right elbow overlapping right shoulder...")
-        #     right_shoulder.z = left_shoulder.z
-        #     right_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #     right_elbow.x, right_elbow.y = right_shoulder.x, right_shoulder.y
-        #     right_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #     print(f"Estimated right shoulder Z: {right_shoulder.z}")
-        #     print(f"Estimated right elbow Z: {right_elbow.z}")
-        #     # Shoulder elbow distance greater than the preset value
-        #     if right_elbow.z >= (right_shoulder.z / 2):
-        #         right_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #     # Correction of wrist values
-        #     if right_elbow.y < right_wrist.y:
-        #         right_wrist.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #         #right_wrist.z = round(right_elbow.z - DIST_ELBOW_WRIST, 2)
-        #         if right_wrist.z < 0:
-        #             right_wrist.z = 0
-        #         right_wrist.x, right_wrist.y = right_shoulder.x, right_shoulder.x
-        #         print(f"Estimated right wrist Z: {right_wrist.z}")
-        #
-        # # Left elbow overlapping right shoulder
-        # if is_nearby(left_shoulder, left_elbow):
-        #     print("Left elbow overlapping left shoulder...")
-        #     left_shoulder.z = right_shoulder.z
-        #     left_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #     left_elbow.x, left_elbow.y = left_shoulder.x, left_shoulder.y
-        #     left_elbow.z = round(right_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #     print(f"Estimated left shoulder Z: {left_shoulder.z}")
-        #     print(f"Estimated left elbow Z: {left_elbow.z}")
-        #     # Shoulder elbow distance greater than the preset value
-        #     if left_elbow.z >= (left_shoulder.z / 2):
-        #         left_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #     # Correction of wrist values
-        #     if left_elbow.y < left_wrist.y:
-        #         left_wrist.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #         # right_wrist.z = round(right_elbow.z - DIST_ELBOW_WRIST, 2)
-        #         if left_wrist.z < 0:
-        #             left_wrist.z = 0
-        #         left_wrist.x, left_wrist.y = left_shoulder.x, left_shoulder.x
-        #         print(f"Estimated right wrist Z: {left_wrist.z}")
-        #
-        # # Correction of wrist values
-        # if left_elbow.z < left_wrist.z:
-        #     left_wrist.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW - DIST_ELBOW_WRIST, 2)
-        # # Shoulder elbow distance greater than the preset value
-        # if left_elbow.z >= (left_shoulder.z / 2):
-        #     left_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
-        #
+            else:
+                if right_shoulder.y < right_wrist.y:
+                    if right_wrist.z == 0:
+                        right_wrist.z = right_shoulder.z
+                    if right_shoulder.y * 0.4 <= right_elbow.y <= right_shoulder.y * 1.2:
+                        print("SAY HELLO TO MY LITTLE FRIEND")
+                        if right_shoulder.z < right_wrist.z:
+                            right_wrist.z = right_shoulder.z
+                        if right_shoulder.z * 1.2 < right_elbow.z:
+                            # right_wrist.z = right_shoulder.z
+                            if right_wrist.z < right_elbow.z * 1.2:
+                                right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
+                                right_wrist.z = right_shoulder.z
+                if right_shoulder.y * 1.2 < right_elbow.y and right_shoulder.y * 1.2 < right_wrist.y:
+                    print("Hand over the head")
+                    if right_shoulder.z * 1.2 < right_wrist.z:
+                        right_wrist.z = round((median_z + right_shoulder.z) / 2, 2)
+                        if right_shoulder.z * 0.9 <= right_elbow.z <= right_shoulder.z * 1.2:
+                            print("Ok elbow")
+                        else:
+                            right_elbow.z = right_wrist.z
+                    if right_shoulder.z < right_elbow.z:
+                        right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
+                    else:
+                        right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
+                elif right_shoulder.y > right_wrist.y:
+                    if right_shoulder.z * 1.2 < right_elbow.z:
+                        right_elbow.z = right_shoulder.z
+                    if is_nearby(right_wrist, right_hip):
+                        if right_shoulder.z * 1.2 < right_elbow.z:
+                            right_elbow.z = right_shoulder.z
+
+        elif 20 < angle < 45 and not is_nearby(right_shoulder, right_elbow) and right_elbow.x > right_shoulder.x * 1.2:
+            print(f"{angle}° Right arm flexed...")
+            if right_shoulder.y * 0.7 <= right_wrist.y <= right_shoulder.y * 1.2:
+                if right_shoulder.z * 0.7 <= right_wrist.z <= right_shoulder.z * 1.2:
+                    if right_shoulder.z * 1.2 < right_elbow.z:
+                        right_elbow.z = right_shoulder.z
+                if right_shoulder.z < right_wrist.z and right_shoulder.z < right_elbow.z:
+                    right_elbow.z = right_shoulder.z
+                    right_wrist.z = right_shoulder.z
+            else:
+                right_elbow.z = right_shoulder.z
+                right_wrist.z = right_shoulder.z
+
+        if is_nearby(right_shoulder, right_wrist) and right_shoulder.x * 0.5 <= right_elbow.x <= right_shoulder.x * 1.1:
+            print("Extencion FRONTAL")
+
         # # Correction of hips values
-        # if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
-        #     right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
+        if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
+            right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
 
         bookmarks[0] = nose
         bookmarks[7] = eye_right
