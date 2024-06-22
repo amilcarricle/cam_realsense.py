@@ -208,11 +208,11 @@ def correct_values(bookmarks, depth_image, depth_scale):
                     print(f"Right elbow Z {right_elbow.z}")
                     right_elbow.z = right_shoulder.z
                     print(f"Right wrist Z correct {right_elbow.z}")
-            elif right_wrist.z == 0:
+            if right_wrist.z == 0:
                 if right_elbow.z <= right_shoulder.z * 1.2:
                     print("Interpolated right wrist")
                     right_wrist.z = round((right_shoulder.z + right_elbow.z) / 2.0, 2)
-            elif right_wrist.z <= right_shoulder.z * 1.2 and right_shoulder.z * 1.2 < right_elbow.z:
+            if right_wrist.z <= right_shoulder.z * 1.2 and right_shoulder.z * 1.2 < right_elbow.z:
                 print("Interpolated elbow")
                 print(f"Elbow {right_elbow.z}")
                 right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
@@ -234,7 +234,11 @@ def correct_values(bookmarks, depth_image, depth_scale):
                 if right_shoulder.y < right_wrist.y:
                     if right_wrist.z == 0:
                         right_wrist.z = right_shoulder.z
-                    if right_shoulder.y * 0.4 <= right_elbow.y <= right_shoulder.y * 1.2:
+
+
+
+                    #if right_shoulder.y * 0.4 <= right_elbow.y <= right_shoulder.y * 1.2:
+                    if right_shoulder.x * 0.4 <= right_elbow.x:
                         print("SAY HELLO TO MY LITTLE FRIEND")
                         if right_shoulder.z < right_wrist.z:
                             right_wrist.z = right_shoulder.z
@@ -275,8 +279,23 @@ def correct_values(bookmarks, depth_image, depth_scale):
                 right_elbow.z = right_shoulder.z
                 right_wrist.z = right_shoulder.z
 
-        if right_shoulder.y * 0.7 <= right_elbow.y <= right_shoulder.y * 0.9:
+        # Especial case, frontal extension
+        if (right_shoulder.y * 0.7 <= right_elbow.y <= right_shoulder.y * 0.9
+                and right_wrist.y <= right_shoulder.y * 1.5):
+            if DIST_SHOULDER_ELBOW * 0.9 <= right_elbow.z <= DIST_SHOULDER_ELBOW * 1.2:
+                right_elbow.x = right_shoulder.x * 1.1
+                right_elbow.y = right_shoulder.y * 1.1
+                right_wrist.x = right_elbow.x * 1.1
+                right_wrist.y = right_elbow.y * 1.1
+                right_wrist.z = right_elbow.z - DIST_ELBOW_WRIST
+            else:
+                right_elbow.z = right_shoulder.z - DIST_SHOULDER_ELBOW
+                right_elbow.x = right_shoulder.x * 1.1
+                right_wrist.x = right_elbow.x * 1.1
+                right_wrist.y = right_elbow.y * 1.1
+                right_wrist.z = right_elbow.z - DIST_ELBOW_WRIST
             print("Extencion FRONTAL")
+
 
 
         # # Correction of hips values
@@ -362,7 +381,11 @@ def main():
 
                             # Print the coordinates
                             #print(f"Landmark {idx}: (x={x}, y={y}, z={z})")
-                    draw_pose_markers_on_depth_image_from_bookmarks(depth_image, store_bookmarks)
+                    aux_list = [store_bookmarks[0], store_bookmarks[7], store_bookmarks[8], store_bookmarks[9],
+                                store_bookmarks[10], store_bookmarks[11], store_bookmarks[12], store_bookmarks[13],
+                                store_bookmarks[14], store_bookmarks[15], store_bookmarks[16], store_bookmarks[23],
+                                store_bookmarks[24]]
+                    draw_pose_markers_on_depth_image_from_bookmarks(depth_image, aux_list)
                     #Apply segmentation mask to color image
                     if segmentation_mask is not None:
                         mask = np.asarray(segmentation_mask[0].numpy_view())
@@ -381,6 +404,9 @@ def main():
                     # print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
                     # Send UDP message with bookmarks
+                    bookmarks = [bookmarks[0], bookmarks[7], bookmarks[8], bookmarks[9], bookmarks[10], bookmarks[11], bookmarks[12],
+                                 bookmarks[13], bookmarks[14], bookmarks[15], bookmarks[16], bookmarks[23], bookmarks[24]]
+
                     send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
                                                        (bookmark.x, bookmark.y, bookmark.z)])
                     # Draw pose markers on depth image
