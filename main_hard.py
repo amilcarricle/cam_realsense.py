@@ -208,7 +208,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
         w_hip = round(calculate_distance(right_wrist, right_hip), 2)
 
         msj = f"Arm angle: {arm_angle}. Trunk angle: {trunk_angle}"
-
+        """
         if 150 < trunk_angle:
             msj = f"Extension Total: {trunk_angle}."
             if 150 <= arm_angle:
@@ -242,7 +242,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
             if 150 < arm_angle:
                 msj = msj + f"Ang ARM: {arm_angle}"
 
-
+        """
         # # Correction of hips values
         if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
              right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
