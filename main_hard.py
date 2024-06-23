@@ -102,16 +102,16 @@ def image_smoothing(point_x, point_y, depth_image, depth_scale):
     z_values = depth_values.flatten() * depth_scale
     return round(np.median(z_values), 2)
 
-def calculate_distance(x1, y1, x2, y2):
+def calculate_distance(marker1, marker2):
     """Calculates the Euclidean distance between two points."""
-    return round(np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))
+    return round(np.sqrt((marker2.x - marker1.x) ** 2 + (marker2.y - marker1.y) ** 2))
 
 def is_nearby(marker1, marker2, threshold=30):
     """Checks if two markers are within a certain distance threshold."""
     distance = np.sqrt((marker1.x - marker2.x) ** 2 + (marker1.y - marker2.y) ** 2)
     return distance < threshold
 
-def angle_arm(shoulder, elbow, wrist):
+def angle(shoulder, elbow, wrist):
     p1 = np.array([shoulder.x, shoulder.y])
     p2 = np.array([elbow.x, elbow.y])
     p3 = np.array([wrist.x, wrist.y])
@@ -159,21 +159,21 @@ def correct_values(bookmarks, depth_image, depth_scale):
         msj = "Initial msj"
         # Face markers
         nose = bookmarks[0]
-        eye_right = bookmarks[7]
-        eye_left = bookmarks[8]
-        mouth_right = bookmarks[9]
-        mouth_left = bookmarks[10]
+        eye_right = bookmarks[1]
+        eye_left = bookmarks[2]
+        mouth_right = bookmarks[3]
+        mouth_left = bookmarks[4]
         # Right arm markers
-        right_shoulder = bookmarks[11]
-        right_elbow = bookmarks[13]
-        right_wrist = bookmarks[15]
+        right_shoulder = bookmarks[5]
+        right_elbow = bookmarks[7]
+        right_wrist = bookmarks[9]
         # Left arm markers
-        left_shoulder = bookmarks[12]
-        left_elbow = bookmarks[14]
-        left_wrist = bookmarks[16]
+        left_shoulder = bookmarks[6]
+        left_elbow = bookmarks[8]
+        left_wrist = bookmarks[10]
         # Hips markers
-        right_hip = bookmarks[23]
-        left_hip = bookmarks[24]
+        right_hip = bookmarks[11]
+        left_hip = bookmarks[12]
         # Calculate initial depth values
         nose.z = image_smoothing(nose.x, nose.y, depth_image, depth_scale)
         eye_right.z = image_smoothing(eye_right.x, eye_right.y, depth_image, depth_scale)
@@ -200,115 +200,47 @@ def correct_values(bookmarks, depth_image, depth_scale):
         left_wrist.z = image_smoothing(left_wrist.x, left_wrist.y, depth_image, depth_scale)
         left_hip.z = image_smoothing(left_hip.x, left_hip.y, depth_image, depth_scale)
 
-        angle = round(angle_arm(right_shoulder, right_elbow, right_wrist), 2)
+        arm_angle = round(angle(right_shoulder, right_elbow, right_wrist), 2)
+        trunk_angle = round(angle(right_hip, right_shoulder, right_elbow), 2)
+        forearm = round(calculate_distance(right_shoulder, right_elbow), 2)
+        upper_arm = round( calculate_distance(right_elbow, right_wrist), 2)
+        arm = round( calculate_distance(right_shoulder, right_wrist), 2)
+        w_hip = round(calculate_distance(right_wrist, right_hip), 2)
 
-        forearm = round( calculate_distance(right_shoulder.x, right_shoulder.y, right_elbow.x, right_elbow.y), 2)
-        arm = round( calculate_distance(right_elbow.x, right_elbow.y, right_wrist.x, right_wrist.y), 2)
-        dist_wrist_shoulder = round( calculate_distance(right_shoulder.x, right_shoulder.y, right_wrist.x, right_wrist.y), 2)
+        msj = f"Arm angle: {arm_angle}. Trunk angle: {trunk_angle}"
 
-        if 135 <= angle and not is_nearby(right_shoulder, right_wrist):
-            print(f"{angle}° Right arm fully extended...")
-            msj = f"Fully Extended. Angle {angle}"
-            # Wrist correction
-            if right_shoulder.z * 1.2 < right_wrist.z:
-                print(f"Right wrist Z {right_wrist.z}")
-                right_wrist.z = right_shoulder.z
-                print(f"Right wrist Z correct {right_wrist.z}")
-                if right_shoulder.z * 1.2 <= right_elbow.z:
-                    print(f"Right elbow Z {right_elbow.z}")
-                    right_elbow.z = right_shoulder.z
-                    print(f"Right wrist Z correct {right_elbow.z}")
-            if right_wrist.z == 0:
-                if right_elbow.z <= right_shoulder.z * 1.2:
-                    print("Interpolated right wrist")
-                    right_wrist.z = round((right_shoulder.z + right_elbow.z) / 2.0, 2)
-            if right_wrist.z <= right_shoulder.z * 1.2 and right_shoulder.z * 1.2 < right_elbow.z:
-                print("Interpolated elbow")
-                print(f"Elbow {right_elbow.z}")
-                right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
-                print(f"Elbow correct: {right_elbow.z}")
-            if right_shoulder.z * 1.2 < right_wrist.z:
-                right_wrist.z = right_shoulder.z
-            if right_shoulder.z * 1.2 < right_elbow.z:
-                right_elbow.z = right_shoulder.z
+        if 150 < trunk_angle:
+            msj = f"Extension Total: {trunk_angle}."
+            if 150 <= arm_angle:
+                msj = msj + f" Ang ARM: {arm_angle}"
 
-        elif 45 <= angle <135 and not is_nearby(right_shoulder, right_wrist):
-            print(f"{angle}° Right arm moderately flexed...")
-            msj = f"Hello. Angle {angle}"
-            if right_shoulder.x * 0.9 < right_elbow.x < right_shoulder.x * 1.2 and right_elbow.y < right_wrist.y:
-                print("Overlaping elbow shoulder")
-                right_shoulder.z = left_shoulder.z
-                right_elbow.x = right_shoulder.x * 1.1
-                right_elbow.y = right_shoulder.y
-            else:
-                if right_shoulder.y < right_wrist.y:
-                    if right_wrist.z == 0:
-                        right_wrist.z = right_shoulder.z
+        elif 90 <= trunk_angle < 150:
+            msj = f"Angulo entre 90 y 150: {trunk_angle} "
+            if 150 < arm_angle:
+                msj = msj + f"Ang ARM: {arm_angle}"
+            elif 90 <= arm_angle <= 150:
+                msj = msj + f"Ang ARM: {arm_angle}"
+            elif arm_angle < 90:
+                msj = msj + f"Ang ARM: {arm_angle}"
 
+        elif 80 <= trunk_angle <= 110:
+            msj = f"Angulo de 90: {trunk_angle} "
+            if 150 <= arm_angle:
+                msj = msj + f"Ang ARM: {arm_angle}"
 
+        elif 30 <= trunk_angle < 80:
+            msj = f"Angulo entre 30 y 80: {trunk_angle}"
+            if 150 < arm_angle:
+                msj = msj + f"Ang ARM: {arm_angle}"
+            elif 90 <= arm_angle <= 150:
+                msj = msj + f"Ang ARM: {arm_angle}"
+            elif arm_angle < 90:
+                msj = msj + f"Ang ARM: {arm_angle}"
 
-                    #if right_shoulder.y * 0.4 <= right_elbow.y <= right_shoulder.y * 1.2:
-                    if right_shoulder.x * 0.4 <= right_elbow.x:
-                        print("SAY HELLO TO MY LITTLE FRIEND")
-                        if right_shoulder.z < right_wrist.z:
-                            right_wrist.z = right_shoulder.z
-                        if right_shoulder.z * 1.2 < right_elbow.z:
-                            #right_wrist.z = right_shoulder.z
-                            if right_wrist.z < right_elbow.z * 1.2:
-                                right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
-                                right_wrist.z = right_shoulder.z
-                if right_shoulder.y * 1.2 < right_elbow.y and right_shoulder.y * 1.2 < right_wrist.y:
-                    print("Hand over the head")
-                    if right_shoulder.z * 1.2 < right_wrist.z:
-                        right_wrist.z = round((median_z + right_shoulder.z) / 2, 2)
-                        if right_shoulder.z * 0.9 <= right_elbow.z <= right_shoulder.z * 1.2:
-                            print("Ok elbow")
-                        else:
-                            right_elbow.z = right_wrist.z
-                    if right_shoulder.z < right_elbow.z:
-                        right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
-                    else:
-                        right_elbow.z = round((right_shoulder.z + right_wrist.z) / 2, 2)
-                elif right_shoulder.y > right_wrist.y:
-                    if right_shoulder.z * 1.2 < right_elbow.z:
-                        right_elbow.z = right_shoulder.z
-                    if is_nearby(right_wrist, right_hip):
-                        if right_shoulder.z * 1.2 < right_elbow.z:
-                            right_elbow.z = right_shoulder.z
-
-        elif 20 < angle < 45 and not is_nearby(right_shoulder, right_elbow) and right_elbow.x > right_shoulder.x * 1.2:
-            print(f"{angle}° Right arm flexed...")
-            msj = f"Dinosaur. Angle {angle}"
-            if right_shoulder.y * 0.7 <= right_wrist.y <= right_shoulder.y * 1.2:
-                if right_shoulder.z * 0.7 <= right_wrist.z <= right_shoulder.z * 1.2:
-                    if right_shoulder.z * 1.2 < right_elbow.z:
-                        right_elbow.z = right_shoulder.z
-                if right_shoulder.z < right_wrist.z and right_shoulder.z < right_elbow.z:
-                    right_elbow.z = right_shoulder.z
-                    right_wrist.z = right_shoulder.z
-            else:
-                right_elbow.z = right_shoulder.z
-                right_wrist.z = right_shoulder.z
-
-        # Especial case, frontal extension
-        if (right_shoulder.y * 0.7 <= right_elbow.y <= right_shoulder.y * 0.9
-                and right_wrist.y <= right_shoulder.y * 1.5):
-            msj = f"Frontal Extension. Angle {angle}"
-
-            if DIST_SHOULDER_ELBOW * 0.9 <= right_elbow.z <= DIST_SHOULDER_ELBOW * 1.2:
-                right_elbow.x = right_shoulder.x * 1.1
-                right_elbow.y = right_shoulder.y * 1.1
-                right_wrist.x = right_elbow.x * 1.1
-                right_wrist.y = right_elbow.y * 1.1
-                right_wrist.z = right_elbow.z - DIST_ELBOW_WRIST
-            else:
-                right_elbow.z = right_shoulder.z - DIST_SHOULDER_ELBOW
-                right_elbow.x = right_shoulder.x * 1.1
-                right_wrist.x = right_elbow.x * 1.1
-                right_wrist.y = right_elbow.y * 1.1
-                right_wrist.z = right_elbow.z - DIST_ELBOW_WRIST
-            print("Extencion FRONTAL")
-
+        elif 10 <= trunk_angle <= 30:
+            msj = f"Angulo entre 10 y 30: {trunk_angle}"
+            if 150 < arm_angle:
+                msj = msj + f"Ang ARM: {arm_angle}"
 
 
         # # Correction of hips values
@@ -316,25 +248,25 @@ def correct_values(bookmarks, depth_image, depth_scale):
              right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
 
         bookmarks[0] = nose
-        bookmarks[7] = eye_right
-        bookmarks[8] = eye_left
-        bookmarks[9] = mouth_right
-        bookmarks[10] = mouth_left
+        bookmarks[1] = eye_right
+        bookmarks[2] = eye_left
+        bookmarks[3] = mouth_right
+        bookmarks[4] = mouth_left
         # Right arm markers
-        bookmarks[11] = right_shoulder
-        bookmarks[13] = right_elbow
-        bookmarks[15] = right_wrist
+        bookmarks[5] = right_shoulder
+        bookmarks[7] = right_elbow
+        bookmarks[9] = right_wrist
         # Left arm markers
-        bookmarks[12] = left_shoulder
-        bookmarks[14] = left_elbow
-        bookmarks[16] = left_wrist
+        bookmarks[6] = left_shoulder
+        bookmarks[8] = left_elbow
+        bookmarks[10] = left_wrist
         # Hips markers
-        bookmarks[23] = right_hip
-        bookmarks[24] = left_hip
+        bookmarks[11] = right_hip
+        bookmarks[12] = left_hip
     else:
         print("The number of values sent is incorrect")
 
-    return bookmarks, msj, forearm, arm, dist_wrist_shoulder
+    return bookmarks, msj, forearm, upper_arm, arm, w_hip
 
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
@@ -416,25 +348,25 @@ def main():
                         bg_image = cv2.bitwise_and(bg_image, cv2.bitwise_not(mask))
                         color_image = cv2.add(fg_image, bg_image)
 
-                    bookmarks, msj, forearm, arm, dist_wrist_shoulder = correct_values(store_bookmarks, depth_image, depth_scale)
+                    bookmarks, msj, forearm, upper_arm, arm, w_hip = correct_values(aux_list, depth_image, depth_scale)
                     # print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
                     # Send UDP message with bookmarks
-                    bookmarks = [bookmarks[0], bookmarks[7], bookmarks[8], bookmarks[9], bookmarks[10], bookmarks[11], bookmarks[12],
-                                 bookmarks[13], bookmarks[14], bookmarks[15], bookmarks[16], bookmarks[23], bookmarks[24]]
+                    #bookmarks = [bookmarks[0], bookmarks[7], bookmarks[8], bookmarks[9], bookmarks[10], bookmarks[11], bookmarks[12],
+                    #             bookmarks[13], bookmarks[14], bookmarks[15], bookmarks[16], bookmarks[23], bookmarks[24]]
 
                     send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
                                                        (bookmark.x, bookmark.y, bookmark.z)])
 
                     # Text in color image
-                    cv2.putText(color_image, msj, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
-                    msj_dist = f"(H-C: {forearm}); (C-M: {arm}); (H-M: {dist_wrist_shoulder})"
-                    cv2.putText(color_image, msj_dist, (50, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
-                    r_fa_a = round(arm / forearm, 2)
-                    r_fa_hc = round(forearm / dist_wrist_shoulder, 2)
-                    r_a_hc = round(arm / dist_wrist_shoulder, 2)
-                    msj_rel = f"(A//FA: {r_fa_a}); (FA//DCH: {r_fa_hc}); (A//DCH: {r_a_hc})"
-                    cv2.putText(color_image, msj_rel, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
+                    cv2.putText(color_image, msj, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
+                    msj_dist = f"(H-C: {forearm}); (C-M: {upper_arm}); (H-M: {arm}; (M-C: {w_hip}))"
+                    cv2.putText(color_image, msj_dist, (50, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+                    r_up_fo = round(upper_arm / forearm, 2)
+                    r_fo_a = round(forearm / arm, 2)
+                    r_up_a = round(upper_arm / arm, 2)
+                    msj_rel = f"(UP//FA: {r_up_fo}); (FA//A: {r_fo_a}); (UP//A: {r_up_a})"
+                    cv2.putText(color_image, msj_rel, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
 
                     # Draw lines on color image
                     draw_lines(color_image)
