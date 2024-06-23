@@ -23,7 +23,7 @@ STREAM_RES_Y = 480
 FPS = 30
 PRESET_JSON = 'ShortRangePreset.json'
 
-#Segmentation mask
+# Segmentation mask
 BG_COLOR = (125, 125, 125)
 MASK_COLOR = (255, 255, 255)
 
@@ -37,7 +37,7 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 POSE_LANDMARKER_MODEL_PATH = "pose_landmarker_full.task"
 #POSE_LANDMARKER_MODEL_PATH = "pose_landmarker_heavy.task"
 
-#Create a PoseLandmarker object
+# Create a PoseLandmarker object
 """
 ATTENTION!!!!!
 Aclaracion, esta forma de crear los objetos difiere de los ejemplos mostrados por parte de google. Buscar en gitHub
@@ -46,6 +46,10 @@ un ejemplo donde se explica este cambio
 base_options = python.BaseOptions(model_asset_buffer=open(POSE_LANDMARKER_MODEL_PATH, "rb").read())
 options = vision.PoseLandmarkerOptions(base_options=base_options, output_segmentation_masks=True)
 detector = vision.PoseLandmarker.create_from_options(options)
+
+# The number of columns and rows for the grid are defined
+NUMBER_COLUMS = 8
+NUMBER_ROWS = 6
 
 def configure_camera():
     """Configures and returns the Intel RealSense camera."""
@@ -106,7 +110,7 @@ def is_nearby(marker1, marker2, threshold=30):
     """Checks if two markers are within a certain distance threshold."""
     distance = np.sqrt((marker1.x - marker2.x) ** 2 + (marker1.y - marker2.y) ** 2)
     return distance < threshold
-# Function to check if points are aligned in a straight line (indicating full extension)
+
 def angle_arm(shoulder, elbow, wrist):
     p1 = np.array([shoulder.x, shoulder.y])
     p2 = np.array([elbow.x, elbow.y])
@@ -152,6 +156,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
     """Corrects the depth values of the bookmarks."""
     if bookmarks:
         print("The number of values sent is verified")
+        msj = "Initial msj"
         # Face markers
         nose = bookmarks[0]
         eye_right = bookmarks[7]
@@ -197,8 +202,13 @@ def correct_values(bookmarks, depth_image, depth_scale):
 
         angle = round(angle_arm(right_shoulder, right_elbow, right_wrist), 2)
 
+        forearm = round( calculate_distance(right_shoulder.x, right_shoulder.y, right_elbow.x, right_elbow.y), 2)
+        arm = round( calculate_distance(right_elbow.x, right_elbow.y, right_wrist.x, right_wrist.y), 2)
+        dist_wrist_shoulder = round( calculate_distance(right_shoulder.x, right_shoulder.y, right_wrist.x, right_wrist.y), 2)
+
         if 135 <= angle and not is_nearby(right_shoulder, right_wrist):
             print(f"{angle}° Right arm fully extended...")
+            msj = f"Fully Extended. Angle {angle}"
             # Wrist correction
             if right_shoulder.z * 1.2 < right_wrist.z:
                 print(f"Right wrist Z {right_wrist.z}")
@@ -224,7 +234,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
 
         elif 45 <= angle <135 and not is_nearby(right_shoulder, right_wrist):
             print(f"{angle}° Right arm moderately flexed...")
-
+            msj = f"Hello. Angle {angle}"
             if right_shoulder.x * 0.9 < right_elbow.x < right_shoulder.x * 1.2 and right_elbow.y < right_wrist.y:
                 print("Overlaping elbow shoulder")
                 right_shoulder.z = left_shoulder.z
@@ -268,6 +278,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
 
         elif 20 < angle < 45 and not is_nearby(right_shoulder, right_elbow) and right_elbow.x > right_shoulder.x * 1.2:
             print(f"{angle}° Right arm flexed...")
+            msj = f"Dinosaur. Angle {angle}"
             if right_shoulder.y * 0.7 <= right_wrist.y <= right_shoulder.y * 1.2:
                 if right_shoulder.z * 0.7 <= right_wrist.z <= right_shoulder.z * 1.2:
                     if right_shoulder.z * 1.2 < right_elbow.z:
@@ -282,6 +293,8 @@ def correct_values(bookmarks, depth_image, depth_scale):
         # Especial case, frontal extension
         if (right_shoulder.y * 0.7 <= right_elbow.y <= right_shoulder.y * 0.9
                 and right_wrist.y <= right_shoulder.y * 1.5):
+            msj = f"Frontal Extension. Angle {angle}"
+
             if DIST_SHOULDER_ELBOW * 0.9 <= right_elbow.z <= DIST_SHOULDER_ELBOW * 1.2:
                 right_elbow.x = right_shoulder.x * 1.1
                 right_elbow.y = right_shoulder.y * 1.1
@@ -321,7 +334,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
     else:
         print("The number of values sent is incorrect")
 
-    return bookmarks
+    return bookmarks, msj, forearm, arm, dist_wrist_shoulder
 
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
@@ -336,17 +349,20 @@ def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
 
 
 
-def draw_pose_markers_on_depth_image(depth_image, markers, depth_scale):
-    """Draws pose markers on the depth image."""
-    for landmark in markers.landmark[:17]:
-        x = int(landmark.x * STREAM_RES_X)
-        y = STREAM_RES_Y - int(landmark.y * STREAM_RES_Y)
-        if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
-            z = round(depth_image[y, x] * depth_scale, 2)
-            cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (0, 255, 255), -1)
-            cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 125, 255), 2)
+def draw_lines(image):
+    cell_height = STREAM_RES_Y // NUMBER_ROWS
+    cell_width = STREAM_RES_X // NUMBER_COLUMS
+    # Dibujar las líneas horizontales
+    for i in range(1, NUMBER_ROWS):
+        start_point = (0, i * cell_height)
+        end_point = (STREAM_RES_X, i * cell_height)
+        cv2.line(image, start_point, end_point, (0, 255, 0), 1)  # Color verde, grosor 1
 
+    # Dibujar las líneas verticales
+    for j in range(1, NUMBER_COLUMS):
+        start_point = (j * cell_width, 0)
+        end_point = (j * cell_width, STREAM_RES_Y)
+        cv2.line(image, start_point, end_point, (0, 255, 0), 1)  # Color verde, grosor 1
 
 def main():
     sequence_number = 1
@@ -400,7 +416,7 @@ def main():
                         bg_image = cv2.bitwise_and(bg_image, cv2.bitwise_not(mask))
                         color_image = cv2.add(fg_image, bg_image)
 
-                    bookmarks = correct_values(store_bookmarks, depth_image, depth_scale)
+                    bookmarks, msj, forearm, arm, dist_wrist_shoulder = correct_values(store_bookmarks, depth_image, depth_scale)
                     # print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
                     # Send UDP message with bookmarks
@@ -409,9 +425,22 @@ def main():
 
                     send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
                                                        (bookmark.x, bookmark.y, bookmark.z)])
+
+                    # Text in color image
+                    cv2.putText(color_image, msj, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+                    msj_dist = f"(H-C: {forearm}); (C-M: {arm}); (H-M: {dist_wrist_shoulder})"
+                    cv2.putText(color_image, msj_dist, (50, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+                    r_fa_a = round(arm / forearm, 2)
+                    r_fa_hc = round(forearm / dist_wrist_shoulder, 2)
+                    r_a_hc = round(arm / dist_wrist_shoulder, 2)
+                    msj_rel = f"(A//FA: {r_fa_a}); (FA//DCH: {r_fa_hc}); (A//DCH: {r_a_hc})"
+                    cv2.putText(color_image, msj_rel, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
+
+                    # Draw lines on color image
+                    draw_lines(color_image)
+
                     # Draw pose markers on depth image
                     draw_pose_markers_on_depth_image_from_bookmarks(color_image, bookmarks)
-
                 cv2.imshow('Color Image', color_image)
 
             if depth_image is not None:
