@@ -21,7 +21,7 @@ DIST_ELBOW_WRIST = 0.25
 STREAM_RES_X = 640
 STREAM_RES_Y = 480
 FPS = 30
-PRESET_JSON = 'ShortRangePreset.json'
+PRESET_JSON = 'BodyScanPreset.json'
 
 # Segmentation mask
 BG_COLOR = (125, 125, 125)
@@ -203,21 +203,53 @@ def correct_values(bookmarks, depth_image, depth_scale):
         arm_angle = round(angle(right_shoulder, right_elbow, right_wrist), 2)
         trunk_angle = round(angle(right_hip, right_shoulder, right_elbow), 2)
         forearm = round(calculate_distance(right_shoulder, right_elbow), 2)
-        upper_arm = round( calculate_distance(right_elbow, right_wrist), 2)
-        arm = round( calculate_distance(right_shoulder, right_wrist), 2)
+        upperarm = round(calculate_distance(right_elbow, right_wrist), 2)
+        arm = round(calculate_distance(right_shoulder, right_wrist), 2)
         w_hip = round(calculate_distance(right_wrist, right_hip), 2)
+        should_should_dist = round(calculate_distance(right_shoulder, left_shoulder), 2)
 
-        msj = f"Arm angle: {arm_angle}. Trunk angle: {trunk_angle}"
-        """
+        #msj = f"Arm angle: {arm_angle}. Trunk angle: {trunk_angle}"
+        forearm_arm = round(forearm / arm, 2)
+        upperarm_arm = round(upperarm / arm, 2)
+
         if 150 < trunk_angle:
+            #Movimiento lateral puro de extension
             msj = f"Extension Total: {trunk_angle}."
             if 150 <= arm_angle:
                 msj = msj + f" Ang ARM: {arm_angle}"
+                if right_shoulder.z * 1.2 < right_elbow.z:
+                    right_elbow.z = right_shoulder.z
+                if right_shoulder.z * 1.2 < right_wrist.z:
+                    right_wrist.z = right_shoulder.z
 
-        elif 90 <= trunk_angle < 150:
+        elif 110 < trunk_angle < 150:
             msj = f"Angulo entre 90 y 150: {trunk_angle} "
             if 150 < arm_angle:
                 msj = msj + f"Ang ARM: {arm_angle}"
+                # Brazo completamente extendido "EJE CORONAL"
+                if 0.80 <= upperarm / forearm < 1.2:
+                    if right_shoulder.z * 1.2 < right_elbow.z:
+                        right_elbow.z = right_shoulder.z
+                    if right_shoulder.z * 1.2 < right_wrist.z:
+                        right_wrist.z = right_shoulder.z
+                # Brazo completamente extendido "EJE SAGITAL"
+                if 1.1 <= upperarm / forearm:
+                    dist = forearm * 100 / 110
+                    print(f"HOLA {dist * 110}")
+                    tetha = degrees(acos( dist / 110))
+                    print(f"Funca el cos {tetha}")
+                    depth = 110 * (np.sin(np.radians(tetha)))
+                    print(f"Depth: {depth}")
+                    right_elbow.z = right_shoulder.z - (depth * depth_scale)*1.2
+
+                    dist = arm * 100 / 210
+                    print(f"HOLA {dist * 210}")
+                    tetha = degrees(acos(dist / 210))
+                    print(f"Hola {tetha}")
+                    depth = arm * (np.sin(np.radians(tetha)))
+                    print(f"Depth: {depth}")
+                    right_wrist.z = right_shoulder.z - (depth * depth_scale)*1.2
+
             elif 90 <= arm_angle <= 150:
                 msj = msj + f"Ang ARM: {arm_angle}"
             elif arm_angle < 90:
@@ -227,11 +259,28 @@ def correct_values(bookmarks, depth_image, depth_scale):
             msj = f"Angulo de 90: {trunk_angle} "
             if 150 <= arm_angle:
                 msj = msj + f"Ang ARM: {arm_angle}"
+                # Brazo completamente extendido "EJE CORONAL"
+                if 0.80 <= upperarm / forearm <= 1.2:
+                    if right_shoulder.z * 1.2 < right_elbow.z:
+                        right_elbow.z = right_shoulder.z
+                    if right_shoulder.z * 1.2 < right_wrist.z:
+                        right_wrist.z = right_shoulder.z
+            elif 60 <= arm_angle < 150:
+                msj = msj +f"Ang ARM {arm_angle}"
+            else:
+                msj = "Dist Hombro"
+
 
         elif 30 <= trunk_angle < 80:
             msj = f"Angulo entre 30 y 80: {trunk_angle}"
             if 150 < arm_angle:
                 msj = msj + f"Ang ARM: {arm_angle}"
+                # Brazo completamente extendido "EJE CORONAL"
+                if 0.80 <= upperarm / forearm <= 1.2:
+                    if right_shoulder.z * 1.2 < right_elbow.z:
+                        right_elbow.z = right_shoulder.z
+                    if right_shoulder.z * 1.2 < right_wrist.z:
+                        right_wrist.z = right_shoulder.z
             elif 90 <= arm_angle <= 150:
                 msj = msj + f"Ang ARM: {arm_angle}"
             elif arm_angle < 90:
@@ -241,8 +290,14 @@ def correct_values(bookmarks, depth_image, depth_scale):
             msj = f"Angulo entre 10 y 30: {trunk_angle}"
             if 150 < arm_angle:
                 msj = msj + f"Ang ARM: {arm_angle}"
+                # Brazo completamente extendido "EJE CORONAL"
+                if 0.80 <= upperarm / forearm <= 1.2:
+                    if right_shoulder.z * 1.2 < right_elbow.z:
+                        right_elbow.z = right_shoulder.z
+                    if right_shoulder.z * 1.2 < right_wrist.z:
+                        right_wrist.z = right_shoulder.z
 
-        """
+
         # # Correction of hips values
         if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
              right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
@@ -266,7 +321,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
     else:
         print("The number of values sent is incorrect")
 
-    return bookmarks, msj, forearm, upper_arm, arm, w_hip
+    return bookmarks, msj, forearm, upperarm, arm, w_hip
 
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
@@ -275,9 +330,9 @@ def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
         if 0 <= y < STREAM_RES_Y and 0 <= x < STREAM_RES_X:
             x = int(x)
             y = int(y)
-            cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (255, 0, 0), -1)
+            cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (0, 255, 0), -1)
             cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (125, 125, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
 
 
@@ -366,10 +421,10 @@ def main():
                     r_fo_a = round(forearm / arm, 2)
                     r_up_a = round(upper_arm / arm, 2)
                     msj_rel = f"(UP//FA: {r_up_fo}); (FA//A: {r_fo_a}); (UP//A: {r_up_a})"
-                    cv2.putText(color_image, msj_rel, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+                    cv2.putText(color_image, msj_rel, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (125, 0, 125), 2, cv2.LINE_AA)
 
                     # Draw lines on color image
-                    draw_lines(color_image)
+                    #draw_lines(color_image)
 
                     # Draw pose markers on depth image
                     draw_pose_markers_on_depth_image_from_bookmarks(color_image, bookmarks)
