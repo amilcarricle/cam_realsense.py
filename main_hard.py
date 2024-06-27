@@ -94,7 +94,7 @@ def send_udp_message(sequence_number, data):
 
 def image_smoothing(point_x, point_y, depth_image, depth_scale):
     """Applies smoothing to the depth image at the specified point."""
-    buffer_size = 8
+    buffer_size = 20
     depth_values = depth_image[max(0, point_y - buffer_size):
                                min(STREAM_RES_Y, point_y + buffer_size + 1),
                                max(0, point_x - buffer_size):
@@ -127,28 +127,45 @@ def angle(shoulder, elbow, wrist):
 
 def calculate_depth(marker1, marker2, hypotenuse, base, depth_scale):
 
-    dist = hypotenuse * 100 / base
-    theta = degrees(acos(dist / base))
-    depth = base * (np.sin(np.radians(theta)))
+    #dist = hypotenuse * 100 / base
 
+    theta = degrees(acos(hypotenuse / base))
+    print(f"THETA: {theta}")
+    depth = base * (np.sin(np.radians(theta)))
+    print(f"DEPTH: {depth}")
     marker2.z = marker1.z - (depth * depth_scale) * 1.2
+    print(marker2)
     return marker2.z
 
-def correct_arm(forearm, upperarm, arm, shoulder, elbow, wrist, depth_scale):
+def forearm_length(marker1, marker2, base, hypotenuse):
+    """ marker1 = shoulder
+        marker2 = elbow
+        base = forearm
+        hypotenuse = distance shoulder hip * 0.5
+    """
+    theta = None
+    if marker1.z < marker2.z or marker2.z == 0:
+        anatomic_distance = hypotenuse * 0.9
+        hypotenuse = anatomic_distance * 0.5
+        relation = base / hypotenuse
+        if relation > 1:
+            marker2.z = marker1.z
+        else:
+            theta = degrees(acos(relation))
+            depth = hypotenuse * (np.sin(np.radians(theta)))
+            marker2.z = marker1.z - (depth * 0.55 / hypotenuse)
 
-    if forearm <= 110 and upperarm <= 100:
-        if shoulder.z * 1.2 < elbow.z:
-            elbow.z = shoulder.z
-        if shoulder.z * 1.2 < wrist.z:
-            wrist.z = shoulder.z
 
-    else:
-        elbow.z = calculate_depth(shoulder, elbow, forearm, 110, depth_scale)
+    return marker2.z, theta
 
-        if elbow.z < wrist.z or wrist == 0:
-            wrist.z = calculate_depth(shoulder, wrist, arm, 210, depth_scale)
-
-    return elbow.z, wrist.z
+def extended_arm_length(marker1, theta, hypotenuse):
+    """
+    marker1: shoulder
+    theta: angle
+    hypotenuse: distance shoulder hip * 0.5
+    """
+    depth = hypotenuse * (np.sin(np.radians(theta)))
+    return marker1.z - (depth / hypotenuse)
 
 #Shoulder correction
 def shoulder_correction(shoulder, shoulder_lim, median_z, depth_image, depth_scale):
@@ -234,7 +251,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
         forearm = round(calculate_distance(right_shoulder, right_elbow), 2)
         upperarm = round(calculate_distance(right_elbow, right_wrist), 2)
         arm = round(calculate_distance(right_shoulder, right_wrist), 2)
-        w_hip = round(calculate_distance(right_wrist, right_hip), 2)
+        shoulder_hip_distance = round(calculate_distance(right_shoulder, right_hip), 2)
         #should_should_dist = round(calculate_distance(right_shoulder, left_shoulder), 2)
 
         #msj = f"Arm angle: {arm_angle}. Trunk angle: {trunk_angle}"
@@ -251,67 +268,122 @@ def correct_values(bookmarks, depth_image, depth_scale):
                 if right_shoulder.z * 1.2 < right_wrist.z:
                     right_wrist.z = right_shoulder.z
 
-        elif 110 < trunk_angle < 150:
-            msj = f"Angulo entre 110 y 150: {trunk_angle} "
-            if 150 < arm_angle:
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder, right_elbow,
-                                                           right_wrist, depth_scale)
+        elif 110 <= trunk_angle < 150:
 
+            msj = msj + f"Angulo entre 110 y 150: {trunk_angle} "
+
+            # """BRAZO COMPLETAMENTE EXTENDIDO"""
+            if 150 <= arm_angle:
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
+
+            # """BRAZO SALUDANDO: Si el brazo se adelanta quedara un movimiento incomodo para el usuario. Por esta
+            # razon no se implementa la accion de TOMAR"""
             elif 90 <= arm_angle <= 150:
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder, right_elbow,
-                                                           right_wrist, depth_scale)
+                print("HOLA")
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
 
             elif arm_angle < 90:
                 msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder, right_elbow,
-                                                           right_wrist, depth_scale)
-        elif 80 <= trunk_angle <= 110:
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
+                
+        elif 80 <= trunk_angle < 110:
             msj = f"Angulo de 90: {trunk_angle} "
+
+            # """ BRAZO COMPLETAMENTE EXTENDIDO """
             if 150 <= arm_angle:
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder, right_elbow,
-                                                           right_wrist, depth_scale)
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
+               
 
             elif 60 <= arm_angle < 150:
                 msj = msj +f"Ang ARM {arm_angle}"
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder, right_elbow,
-                                                           right_wrist, depth_scale)
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
             else:
-                msj = "Dist Hombro"
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
 
 
         elif 30 <= trunk_angle < 80:
             msj = f"Angulo entre 30 y 80: {trunk_angle}"
+
+            # """ BRAZO COMPLETAMENTE EXTENDIDO """
             if 150 < arm_angle:
+                print("HOLA 4.1")
                 msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder,
-                                                           right_elbow, right_wrist, depth_scale)
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
 
             elif 90 <= arm_angle <= 150:
-                msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder, right_elbow,
-                                                           right_wrist, depth_scale)
+                print("HOLA 4.2")
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
+                
             elif arm_angle < 90:
+                print("HOLA 4.3")
+
                 msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder, right_elbow,
-                                                           right_wrist, depth_scale)
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
+               
 
         elif 10 <= trunk_angle <= 30:
+            print("ANGULO MAS PEQUEÑO")
             msj = f"Angulo entre 10 y 30: {trunk_angle}"
+            # """ BRAZO COMPLETAMENTE EXTENDIDO """
             if 150 < arm_angle:
                 msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, right_wrist.z = correct_arm(forearm, upperarm, arm, right_shoulder,
-                                                           right_elbow, right_wrist, depth_scale)
-            else:
-                right_elbow.z = calculate_depth(right_shoulder, right_elbow, forearm, 110, depth_scale)
+                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
 
-                if right_elbow.z < right_wrist.z or right_wrist == 0:
-                    right_wrist.z = calculate_depth(right_shoulder, right_wrist, arm, 210, depth_scale)
+                if theta is not None:
+                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                else:
+                    right_wrist.z = right_shoulder.z
+
+
+                  
+
+        # msj = f"ARM: {arm}, S-H: {shoulder_hip_distance}, S/H: {arm / shoulder_hip_distance}"
 
 
         # # Correction of hips values
         if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
-             right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
-
+            print("HOLA7")
+            right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
+        print(f"Long ARM: {arm}, ")
         bookmarks[0] = nose
         bookmarks[1] = eye_right
         bookmarks[2] = eye_left
@@ -331,7 +403,7 @@ def correct_values(bookmarks, depth_image, depth_scale):
     else:
         print("The number of values sent is incorrect")
 
-    return bookmarks, msj, forearm, upperarm, arm, w_hip
+    return bookmarks, msj
 
 def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
     """Draws pose markers on the depth image using a list of bookmarks."""
@@ -413,7 +485,7 @@ def main():
                         bg_image = cv2.bitwise_and(bg_image, cv2.bitwise_not(mask))
                         color_image = cv2.add(fg_image, bg_image)
 
-                    bookmarks, msj, forearm, upper_arm, arm, w_hip = correct_values(aux_list, depth_image, depth_scale)
+                    bookmarks, msj = correct_values(aux_list, depth_image, depth_scale)
                     # print(f"Len of Bookmarks: {len(bookmarks)}")
                     sequence_number += 1
                     # Send UDP message with bookmarks
@@ -424,9 +496,9 @@ def main():
                                                        (bookmark.x, bookmark.y, bookmark.z)])
 
                     # Text in color image
-                    cv2.putText(color_image, msj, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
-                    msj_dist = f"(H-C: {forearm}); (C-M: {upper_arm}); (H-M: {arm})"
-                    cv2.putText(color_image, msj_dist, (50, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+                    cv2.putText(color_image, msj, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
+                    #msj_dist = f"(H-C: {forearm}); (C-M: {upper_arm}); (H-M: {arm})"
+                    #cv2.putText(color_image, msj_dist, (50, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
                     # r_up_fo = round(upper_arm / forearm, 2)
                     # r_fo_a = round(forearm / arm, 2)
                     # r_up_a = round(upper_arm / arm, 2)
