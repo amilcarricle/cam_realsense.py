@@ -106,7 +106,7 @@ def calculate_distance(marker1, marker2):
     """Calculates the Euclidean distance between two points."""
     return round(np.sqrt((marker2.x - marker1.x) ** 2 + (marker2.y - marker1.y) ** 2))
 
-def is_nearby(marker1, marker2, threshold=30):
+def is_nearby(marker1, marker2, threshold=40):
     """Checks if two markers are within a certain distance threshold."""
     distance = np.sqrt((marker1.x - marker2.x) ** 2 + (marker1.y - marker2.y) ** 2)
     return distance < threshold
@@ -166,6 +166,24 @@ def extended_arm_length(marker1, theta, hypotenuse):
     """
     depth = hypotenuse * (np.sin(np.radians(theta)))
     return marker1.z - (depth / hypotenuse)
+
+def compare_length(hypotenuse, projection):
+    """
+    hypotenuse: distance shoulder elbow
+    projection: forearm
+    return: true or false
+    """
+    print("Comparamos longitudes")
+    hypotenuse = hypotenuse * 0.9
+    hypotenuse = hypotenuse * 0.55
+    return (0.75 * hypotenuse <= projection <= hypotenuse)
+def correction_abnormal_values(marker1, hypotenuse):
+    """
+    marker1: right_elbow:
+    :hypotenuse: shoulder_hip_distance:
+    """
+    long_upperarm = hypotenuse * 0.9
+    return marker1.z - (hypotenuse * 0.55 / long_upperarm)
 
 #Shoulder correction
 def shoulder_correction(shoulder, shoulder_lim, median_z, depth_image, depth_scale):
@@ -237,6 +255,8 @@ def correct_values(bookmarks, depth_image, depth_scale):
         # Left shoulder correction
         left_shoulder.z, _ = shoulder_correction(left_shoulder, right_shoulder, median_z, depth_image, depth_scale)
 
+
+
        # Smoothing other markers
         right_elbow.z = image_smoothing(right_elbow.x, right_elbow.y, depth_image, depth_scale)
         right_wrist.z = image_smoothing(right_wrist.x, right_wrist.y, depth_image, depth_scale)
@@ -244,6 +264,10 @@ def correct_values(bookmarks, depth_image, depth_scale):
         left_elbow.z = image_smoothing(left_elbow.x, left_elbow.y, depth_image, depth_scale)
         left_wrist.z = image_smoothing(left_wrist.x, left_wrist.y, depth_image, depth_scale)
         left_hip.z = image_smoothing(left_hip.x, left_hip.y, depth_image, depth_scale)
+
+        # Correction of hips values
+        if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
+            right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
 
         arm_angle = round(angle(right_shoulder, right_elbow, right_wrist), 2)
         trunk_angle = round(angle(right_hip, right_shoulder, right_elbow), 2)
@@ -267,6 +291,8 @@ def correct_values(bookmarks, depth_image, depth_scale):
                     right_elbow.z = right_shoulder.z
                 if right_shoulder.z * 1.2 < right_wrist.z:
                     right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
 
         elif 110 <= trunk_angle < 150:
 
@@ -274,57 +300,97 @@ def correct_values(bookmarks, depth_image, depth_scale):
 
             # """BRAZO COMPLETAMENTE EXTENDIDO"""
             if 150 <= arm_angle:
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if right_shoulder.z < right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
 
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
+
 
             # """BRAZO SALUDANDO: Si el brazo se adelanta quedara un movimiento incomodo para el usuario. Por esta
             # razon no se implementa la accion de TOMAR"""
             elif 90 <= arm_angle <= 150:
-                print("HOLA")
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
+
+                if right_shoulder.z < right_elbow.z:
+
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                    if right_elbow.z < right_wrist.z:
+                        right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
 
             elif arm_angle < 90:
                 msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
+
+                if is_nearby(right_wrist, eye_right) and compare_length(shoulder_hip_distance, forearm):
                     right_wrist.z = right_shoulder.z
+                    right_elbow.z = right_shoulder.z
+                elif is_nearby(right_wrist, eye_right):
+                    right_wrist.z = right_shoulder.z
+                    right_elbow.z, _ = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                elif right_shoulder.z < right_elbow.z:
+
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm,
+                                                          shoulder_hip_distance)
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                    if right_elbow.z < right_wrist.z:
+                        right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
                 
         elif 80 <= trunk_angle < 110:
             msj = f"Angulo de 90: {trunk_angle} "
 
             # """ BRAZO COMPLETAMENTE EXTENDIDO """
             if 150 <= arm_angle:
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if right_shoulder.z < right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
 
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
-               
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
+
 
             elif 60 <= arm_angle < 150:
                 msj = msj +f"Ang ARM {arm_angle}"
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
+
+                if right_shoulder.z <= right_elbow.z and compare_length(shoulder_hip_distance, forearm):
                     right_wrist.z = right_shoulder.z
+                    right_elbow.z = right_shoulder.z
+                elif (right_shoulder.z <= right_elbow.z and compare_length(shoulder_hip_distance, upperarm) and
+                      compare_length(shoulder_hip_distance, forearm)):
+                    right_elbow.z, _ = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                    right_wrist.z = right_elbow.z
+                elif right_shoulder.z <= right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                    if theta is not None:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                else:
+                    right_wrist.z = right_elbow.z
+
+
             else:
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
+                if right_shoulder.z < right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
 
 
         elif 30 <= trunk_angle < 80:
@@ -334,56 +400,58 @@ def correct_values(bookmarks, depth_image, depth_scale):
             if 150 < arm_angle:
                 print("HOLA 4.1")
                 msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if right_shoulder.z < right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
 
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
 
             elif 90 <= arm_angle <= 150:
                 print("HOLA 4.2")
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
+                if right_shoulder.z < right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
                 
             elif arm_angle < 90:
-                print("HOLA 4.3")
 
                 msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
+                if right_shoulder.z < right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
                
 
         elif 10 <= trunk_angle <= 30:
-            print("ANGULO MAS PEQUEÑO")
             msj = f"Angulo entre 10 y 30: {trunk_angle}"
             # """ BRAZO COMPLETAMENTE EXTENDIDO """
             if 150 < arm_angle:
-                msj = msj + f"Ang ARM: {arm_angle}"
-                right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
+                if right_shoulder.z < right_elbow.z:
+                    right_elbow.z, theta = forearm_length(right_shoulder, right_elbow, forearm, shoulder_hip_distance)
 
-                if theta is not None:
-                    right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
-                else:
-                    right_wrist.z = right_shoulder.z
-
-
-                  
+                    if theta is not None and right_shoulder.z < right_wrist.z:
+                        right_wrist.z = extended_arm_length(right_shoulder, theta, shoulder_hip_distance * 0.5)
+                    else:
+                        right_wrist.z = right_shoulder.z
+                if right_elbow.z < right_wrist.z:
+                    right_wrist.z = correction_abnormal_values(right_elbow, shoulder_hip_distance)
 
         # msj = f"ARM: {arm}, S-H: {shoulder_hip_distance}, S/H: {arm / shoulder_hip_distance}"
 
-
-        # # Correction of hips values
-        if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
-            print("HOLA7")
-            right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
-        print(f"Long ARM: {arm}, ")
         bookmarks[0] = nose
         bookmarks[1] = eye_right
         bookmarks[2] = eye_left
