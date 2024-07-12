@@ -166,7 +166,7 @@ def extended_arm_length(marker1, theta, hypotenuse):
     hypotenuse: distance shoulder hip
     """
     depth = hypotenuse * (np.sin(np.radians(theta)))
-    return marker1.z - (depth * (ARM_LENGHT) / hypotenuse)
+    return round(marker1.z - (depth * (ARM_LENGHT) / hypotenuse), 2)
 
 def compare_length(right_arm_aprox, right_shoulder, right_elbow):
     """
@@ -234,24 +234,24 @@ def correction_elbow(arm_aprox, shoulder, elbow):
         elbow.z = round(shoulder.z - (depth * DIST_SHOULDER_ELBOW / anatomic_forearm), 2)
     return elbow.z, theta
 
-def correction_wrist(arm_aprox, shoulder, wrist):
+def correction_wrist(arm_aprox, elbow, wrist):
     """
 
     :param arm_aprox:
-    :param shoulder:
+    :param elbow:
     :param wrist:
     :return:
     """
-    arm_projection = calculate_distance(shoulder, wrist)
-    anatomic_arm = arm_aprox
-    relation = arm_projection / anatomic_arm
+    upperarm_projection = calculate_distance(elbow, wrist)
+    anatomic_upperarm = arm_aprox * 0.45
+    relation = upperarm_projection / anatomic_upperarm
     print(f"Relation: {relation}")
     if relation > 1:
-        wrist.z = shoulder.z
+        wrist.z = elbow.z - DIST_ELBOW_WRIST
     else:
         theta = degrees(acos(relation))
-        depth = anatomic_arm * (np.sin(np.radians(theta)))
-        wrist.z = shoulder.z - (depth * ARM_LENGHT/ anatomic_arm)
+        depth = anatomic_upperarm * (np.sin(np.radians(theta)))
+        wrist.z = round(elbow.z - (depth * DIST_ELBOW_WRIST/ anatomic_upperarm), 2)
 
     return wrist.z
 
@@ -283,36 +283,137 @@ def shoulder_correction(shoulder, shoulder_lim, median_z):
     return shoulder.z, flag
 
 # Correction of abnormal values due to scattering
+
+def upper_middle_extension(arm_angle, aux_angle, arm_aprox, eye, shoulder, elbow, wrist):
+    """
+    :param arm_angle:
+    :param aux_angle:
+    :param arm_aprox:
+    :param eye:
+    :param shoulder:
+    :param elbow:
+    :param wrist:
+    :return:
+    """
+    arm = round(calculate_distance(shoulder, wrist), 2)
+    if 145 <= arm_angle:  # <---------------------------------------------------------------Brzo Completamente extendido
+        if 165 <= aux_angle and arm > arm_aprox:
+            print("HOLAAAA")
+            if wrist.z > shoulder.z:
+                wrist.z = shoulder.z
+            if elbow.z > shoulder.z:
+                elbow.z = shoulder.z
+        elif 100 <= aux_angle < 165:
+            if elbow.z > shoulder.z:
+                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
+                if theta is not None:
+                    #wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
+                    wrist.z = correction_wrist(arm_aprox, elbow, wrist)
+                else:
+                    wrist.z = shoulder.z
+
+    elif 90 <= arm_angle < 145:  # <--------------------------------------------------------Agulo Brzo y Antebrazo > 90°
+        if 170 <= aux_angle:
+            if wrist.z > shoulder.z:
+                wrist.z = shoulder.z
+            if elbow.z > shoulder.z:
+                elbow.z = shoulder.z
+        elif 100 <= aux_angle < 165:
+            if elbow.z > shoulder.z:
+                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
+                if theta is not None:
+                    #wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
+                    wrist.z = correction_wrist(arm_aprox, elbow, wrist)
+                else:
+                    wrist.z = shoulder.z
+
+    elif arm_angle < 90:  # <---------------------------------------------------------------Agulo Brzo y Antebrazo < 90°
+        if 165 <= aux_angle:
+            if wrist.z > shoulder.z:
+                wrist.z = shoulder.z
+            if elbow.z > shoulder.z:
+                elbow.z = shoulder.z
+        elif 100 <= aux_angle < 165:
+            if elbow.z > shoulder.z:
+                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
+                if theta is not None and not is_nearby(wrist, eye, 40):
+                    #wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
+                    wrist.z = correction_wrist(arm_aprox, elbow, wrist)
+                elif is_nearby(wrist, eye, 40):
+                    wrist.z = round((eye.z + shoulder.z) / 2, 2)
+
+    return elbow.z, wrist.z
+
+def middle_extension(arm_angle, arm, arm_aprox, shoulder, elbow, wrist):
+    """
+    :param arm_angle:
+    :param arm:
+    :param arm_aprox:
+    :param shoulder:
+    :param elbow:
+    :param wrist:
+    :return:
+    """
+    if 145 <= arm_angle:  # <-----------------------------------------Brzo Completamente extendido
+        if arm > arm_aprox:
+            if wrist.z > shoulder.z or wrist.z == 0:
+                wrist.z = shoulder.z
+            if elbow.z > shoulder.z:
+                elbow.z = shoulder.z
+        else:
+            if elbow.z > shoulder.z:
+                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
+                if theta is not None:
+                    wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
+                else:
+                    wrist.z = shoulder.z
+    elif 90 <= arm_angle < 145:
+        if arm_aprox > arm:
+            upperarm = round(calculate_distance(shoulder, elbow), 2)
+            if upperarm >= 0.45 * arm_aprox:
+                if wrist.z > shoulder.z or wrist.z == 0:
+                    wrist.z = shoulder.z
+                if elbow.z > shoulder.z:
+                    elbow.z = shoulder.z
+            else:
+                if elbow.z > shoulder.z or wrist.z == 0:
+                    elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
+                    if theta is not None:
+                        wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
+                    else:
+                        wrist.z = shoulder.z
+    return  elbow.z, wrist.z
+
 def correct_values(bookmarks, buffer_bookmarks, sequence_number):
     """Corrects the depth values of the bookmarks."""
 
     # print(f"Bookmarks: {bookmarks}")
     # print(f"Buffer: {buffer_bookmarks}")
-    if sequence_number == 1:
-        buffer_bookmarks = bookmarks
-        print("Inicial")
-    else:
-        print("Final")
-        for i in range(len(bookmarks)):
-            """
-            Se busca corregir el efecto de oscilacion en las mediciones de profundidad, todos los valores 
-            menores a un 5% entre la medicion anterior y la reciente seran descartados. Se comparan 
-            valores en +/- 5 pixeles de x e y.
-            """
-            if abs(buffer_bookmarks[i].z - bookmarks[i].z) <= 0.05:
-                if (abs(buffer_bookmarks[i].x - bookmarks[i].x) <= 5
-                        or abs(buffer_bookmarks[i].y - bookmarks[i].y) <= 5):
-                    bookmarks[i].z = buffer_bookmarks[i].z
-                    """
-                    Mediante esta linea omito las oscilaciones de las coordenadas X e Y
-                    """
-                if abs(buffer_bookmarks[i].x - bookmarks[i].x) <= 15:
-                    bookmarks[i].x = buffer_bookmarks[i].x
-                if abs(buffer_bookmarks[i].y - bookmarks[i].y) <= 15:
-                    bookmarks[i].y = buffer_bookmarks[i].y
-
-
     if bookmarks:
+
+        if sequence_number == 1:
+            buffer_bookmarks = bookmarks
+            print("Inicial")
+        else:
+            print("Final")
+            for i in range(len(bookmarks)):
+                """
+                Se busca corregir el efecto de oscilacion en las mediciones de profundidad, todos los valores 
+                menores a un 5% entre la medicion anterior y la reciente seran descartados. Se comparan 
+                valores en +/- 5 pixeles de x e y.
+                """
+                if abs(buffer_bookmarks[i].z - bookmarks[i].z) <= 0.05:
+                    if (abs(buffer_bookmarks[i].x - bookmarks[i].x) <= 5
+                            or abs(buffer_bookmarks[i].y - bookmarks[i].y) <= 5):
+                        bookmarks[i].z = buffer_bookmarks[i].z
+                        """
+                        Mediante esta linea omito las oscilaciones de las coordenadas X e Y
+                        """
+                    if abs(buffer_bookmarks[i].x - bookmarks[i].x) <= 15:
+                        bookmarks[i].x = buffer_bookmarks[i].x
+                    if abs(buffer_bookmarks[i].y - bookmarks[i].y) <= 15:
+                        bookmarks[i].y = buffer_bookmarks[i].y
+
         print("The number of values sent is verified")
         msj = "Initial msj"
         # Face markers
@@ -347,7 +448,7 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
 
 
         # Correction of hips values
-        if right_hip.z > right_shoulder.z or left_hip.z > left_hip.z:
+        if right_hip.z > right_shoulder.z or left_hip.z > left_shoulder.z:
             right_hip.z, left_hip.z = right_shoulder.z, left_shoulder.z
 
         # <------------------------------------------------------------------------------------------------------------>
@@ -369,173 +470,28 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
             msj = "Extension Media Superior"
             print("------------------------------------------------------")
             print(f"ARM: {right_arm}; APROX: {right_arm_aprox}")
-
-            if 145 <= righ_arm_angle:           # <-----------------------------------------Brzo Completamente extendido
-                msj = msj + f"Aux: {right_angle_aux}"
-                if 170 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 165:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None:
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        else:
-                            right_wrist.z = right_shoulder.z
-
-            elif 90 <= righ_arm_angle < 145:    # <-----------------------------------------Agulo Brzo y Antebrazo > 90°
-                if 170 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 170:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None:
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        else:
-                            right_wrist.z = right_shoulder.z
-
-            elif righ_arm_angle < 90:      # <----------------------------------------------Agulo Brzo y Antebrazo < 90°
-                if 165 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 165:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None and not is_nearby(right_wrist, eye_right, 40):
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        elif is_nearby(right_wrist, eye_right, 40):
-                            right_wrist.z = round((eye_right.z + right_shoulder.z) / 2, 2)
-
+            right_elbow.z, right_wrist.z = upper_middle_extension(righ_arm_angle, right_angle_aux, right_arm_aprox,
+                                                                  eye_right, right_shoulder, right_elbow, right_wrist)
 
         # <--------------------------------------------------------------------------------------------- Extension Media
         elif 70 <= right_trunk_angle < 110:
 
             msj = f"Extension Media {right_arm}; {right_arm_aprox}"
-            if 145 <= righ_arm_angle:           # <-----------------------------------------Brzo Completamente extendido
-                if right_arm > right_arm_aprox:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                else:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None:
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        else:
-                            right_wrist.z = right_shoulder.z
-            elif 90 <= righ_arm_angle < 145:
-                if right_arm_aprox > right_arm:
-                    upperarm = round(calculate_distance(right_shoulder, right_elbow), 2)
-                    if upperarm >= 0.45 * right_arm_aprox:
-                        if right_wrist.z > right_shoulder.z:
-                            right_wrist.z = right_shoulder.z
-                        if right_elbow.z > right_shoulder.z:
-                            right_elbow.z = right_shoulder.z
-                    else:
-                        if right_elbow.z > right_shoulder.z:
-                            right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                            if theta is not None:
-                                right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                            else:
-                                right_wrist.z = right_shoulder.z
+
+            right_elbow.z, right_wrist.z = middle_extension(righ_arm_angle, right_arm, right_arm_aprox, right_shoulder,
+                                                            right_elbow, right_wrist)
+
         # <------------------------------------------------------------------------------------ Extension Media Inferior
         elif 30 <= right_trunk_angle < 70:
-            if 145 <= righ_arm_angle:  # <-----------------------------------------Brzo Completamente extendido
-                msj = msj + f"Aux: {right_angle_aux}"
-                if 170 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 170:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None:
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        else:
-                            right_wrist.z = right_shoulder.z
+            right_elbow.z, right_wrist.z = upper_middle_extension(righ_arm_angle, right_angle_aux, right_arm_aprox,
+                                                                  eye_right, right_shoulder, right_elbow, right_wrist)
 
-            elif 90 <= righ_arm_angle < 145:  # <-----------------------------------------Agulo Brzo y Antebrazo > 90°
-                if 170 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 170:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None:
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        else:
-                            right_wrist.z = right_shoulder.z
-
-            elif righ_arm_angle < 90:  # <----------------------------------------------Agulo Brzo y Antebrazo < 90°
-                if 156 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 170:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None and not is_nearby(right_wrist, eye_right, 40):
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        elif is_nearby(right_wrist, eye_right, 40):
-                            right_wrist.z = round((eye_right.z + right_shoulder.z) / 2, 2)
         # <------------------------------------------------------------------------------------------ Extension Inferior
 
         else:
-            msj = "Extension Inferior"
-            if 145 <= righ_arm_angle:  # <-----------------------------------------Brzo Completamente extendido
-                msj = msj + f"Aux: {right_angle_aux}"
-                if 170 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 170:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None:
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        else:
-                            right_wrist.z = right_shoulder.z
+            right_elbow.z, right_wrist.z = upper_middle_extension(righ_arm_angle, right_angle_aux, right_arm_aprox,
+                                                                  eye_right, right_shoulder, right_elbow, right_wrist)
 
-            elif 90 <= righ_arm_angle < 145:  # <-----------------------------------------Agulo Brzo y Antebrazo > 90°
-                if 170 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 170:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None:
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        else:
-                            right_wrist.z = right_shoulder.z
-
-            elif righ_arm_angle < 90:  # <----------------------------------------------Agulo Brzo y Antebrazo < 90°
-                if 156 <= right_angle_aux:
-                    if right_wrist.z > right_shoulder.z:
-                        right_wrist.z = right_shoulder.z
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z = right_shoulder.z
-                elif 100 <= right_angle_aux < 170:
-                    if right_elbow.z > right_shoulder.z:
-                        right_elbow.z, theta = correction_elbow(right_arm_aprox, right_shoulder, right_elbow)
-                        if theta is not None and not is_nearby(right_wrist, eye_right, 40):
-                            right_wrist.z = extended_arm_length(right_shoulder, theta, right_arm_aprox)
-                        elif is_nearby(right_wrist, eye_right, 40):
-                            right_wrist.z = round((eye_right.z + right_shoulder.z) / 2, 2)
         # <------------------------------------------------------------------------------------------------------------>
         # <----------------------------------BRAZO IZQUIERDO----------------------------------------------------------->
         # <------------------------------------------------------------------------------------------------------------>
@@ -543,202 +499,30 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
         left_arm_aprox = round(calculate_distance(right_shoulder, right_hip), 2) * 0.90
 
         # Angulos
-        left_angle_aux = angle(left_shoulder, left_shoulder, left_elbow)
+        left_angle_aux = angle(right_shoulder, left_shoulder, left_elbow)
         left_arm_angle = round(angle(left_shoulder, left_elbow, left_wrist), 2)
         left_trunk_angle = round(angle(left_hip, left_shoulder, left_elbow), 2)
         # <------------------------------------------------------------------------------------------ Extension Superior
         if 145 <= left_trunk_angle:
-            #msj = "Extension Superior"
+
             left_wrist.z = left_elbow.z = left_shoulder.z
         # <------------------------------------------------------------------------------------ Extension Media Superior
         elif 110 <= left_trunk_angle < 145:
-            #msj = "Extension Media Superior"
-            #print("------------------------------------------------------")
-            #print(f"ARM: {left_arm}; APROX: {left_arm_aprox}")
-
-            if 145 <= left_arm_angle:  # <-----------------------------------------Brzo Completamente extendido
-                #msj = msj + f"Aux: {left_angle_aux}"
-                if 170 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 165:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None:
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        else:
-                            left_wrist.z = left_shoulder.z
-
-            elif 90 <= left_arm_angle < 145:  # <-----------------------------------------Agulo Brzo y Antebrazo > 90°
-                if 170 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 170:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None:
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        else:
-                            left_wrist.z = left_shoulder.z
-
-            elif left_arm_angle < 90:  # <----------------------------------------------Agulo Brzo y Antebrazo < 90°
-                if 165 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 165:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None and not is_nearby(left_wrist, eye_left, 40):
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        elif is_nearby(left_wrist, eye_left, 40):
-                            left_wrist.z = round((eye_left.z + left_shoulder.z) / 2, 2)
+            left_elbow.z, left_wrist.z = upper_middle_extension(left_arm_angle, left_angle_aux, left_arm_aprox,
+                                                                  eye_left, left_shoulder, left_elbow, left_wrist)
 
 
         # <--------------------------------------------------------------------------------------------- Extension Media
         elif 70 <= left_trunk_angle < 110:
-
-            #msj = f"Extension Media {right_arm}; {right_arm_aprox}"
-            if 145 <= left_arm_angle:  # <-----------------------------------------Brzo Completamente extendido
-                if left_arm > left_arm_aprox:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                else:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None:
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        else:
-                            left_wrist.z = left_shoulder.z
-            elif 90 <= left_arm_angle < 145:
-                if left_arm_aprox > left_arm:
-                    upperarm = round(calculate_distance(left_shoulder, left_elbow), 2)
-                    if upperarm >= 0.45 * left_arm_aprox:
-                        if left_wrist.z > left_shoulder.z:
-                            left_wrist.z = left_shoulder.z
-                        if left_elbow.z > left_shoulder.z:
-                            left_elbow.z = left_shoulder.z
-                    else:
-                        if left_elbow.z > left_shoulder.z:
-                            left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                            if theta is not None:
-                                left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                            else:
-                                left_wrist.z = left_shoulder.z
-        # <------------------------------------------------------------------------------------ Extension Media Inferior
-        elif 30 <= left_trunk_angle < 70:
-            if 145 <= left_arm_angle:  # <-----------------------------------------Brzo Completamente extendido
-                #msj = msj + f"Aux: {left_angle_aux}"
-                if 170 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 170:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None:
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        else:
-                            left_wrist.z = left_shoulder.z
-
-            elif 90 <= left_arm_angle < 145:  # <-----------------------------------------Agulo Brzo y Antebrazo > 90°
-                if 170 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 170:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None:
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        else:
-                            left_wrist.z = left_shoulder.z
-
-            elif left_arm_angle < 90:  # <----------------------------------------------Agulo Brzo y Antebrazo < 90°
-                if 156 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 170:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None and not is_nearby(left_wrist, eye_left, 40):
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        elif is_nearby(left_wrist, eye_left, 40):
-                            left_wrist.z = round((eye_left.z + left_shoulder.z) / 2, 2)
+            left_elbow.z, left_wrist.z = middle_extension(left_arm_angle, left_arm, left_arm_aprox, left_shoulder,
+                                                            left_elbow, left_wrist)
         # <------------------------------------------------------------------------------------------ Extension Inferior
-
+        elif 30 <= left_trunk_angle < 70:
+            left_elbow.z, left_wrist.z = upper_middle_extension(left_arm_angle, left_angle_aux, left_arm_aprox,
+                                                                eye_left, left_shoulder, left_elbow, left_wrist)
         else:
-            msj = "Extension Inferior"
-            if 145 <= left_arm_angle:  # <-----------------------------------------Brzo Completamente extendido
-                #msj = msj + f"Aux: {right_angle_aux}"
-                if 170 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 170:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None:
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        else:
-                            left_wrist.z = left_shoulder.z
-
-            elif 90 <= left_arm_angle < 145:  # <-----------------------------------------Agulo Brzo y Antebrazo > 90°
-                if 170 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 170:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None:
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        else:
-                            left_wrist.z = left_shoulder.z
-
-            elif left_arm_angle < 90:  # <----------------------------------------------Agulo Brzo y Antebrazo < 90°
-                if 156 <= left_angle_aux:
-                    if left_wrist.z > left_shoulder.z:
-                        left_wrist.z = left_shoulder.z
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z = left_shoulder.z
-                elif 100 <= left_angle_aux < 170:
-                    if left_elbow.z > left_shoulder.z:
-                        left_elbow.z, theta = correction_elbow(left_arm_aprox, left_shoulder, left_elbow)
-                        if theta is not None and not is_nearby(left_wrist, eye_left, 40):
-                            left_wrist.z = extended_arm_length(left_shoulder, theta, left_arm_aprox)
-                        elif is_nearby(left_wrist, eye_left, 40):
-                            left_wrist.z = round((eye_left.z + left_shoulder.z) / 2, 2)
-
-        bookmarks[0] = nose
-        bookmarks[1] = eye_right
-        bookmarks[2] = eye_left
-        bookmarks[3] = mouth_right
-        bookmarks[4] = mouth_left
-        # Right arm markers
-        bookmarks[5] = right_shoulder
-        bookmarks[7] = right_elbow
-        bookmarks[9] = right_wrist
-        # Left arm markers
-        bookmarks[6] = left_shoulder
-        bookmarks[8] = left_elbow
-        bookmarks[10] = left_wrist
-        # Hips markers
-        bookmarks[11] = right_hip
-        bookmarks[12] = left_hip
+            left_elbow.z, left_wrist.z = upper_middle_extension(left_arm_angle, left_angle_aux, left_arm_aprox,
+                                                                eye_left, left_shoulder, left_elbow, left_wrist)
 
         """
         Correccion de los valores anomalos que no se pueden solucionar con los angulos. Este problema aparece cuando se 
@@ -754,6 +538,10 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
                 left_elbow.z = left_shoulder.z - DIST_SHOULDER_ELBOW
             if left_wrist.z > left_shoulder.z:
                 left_wrist.z = left_elbow.z - DIST_ELBOW_WRIST
+        if right_wrist.z > right_elbow.z:
+            right_wrist.z = round(right_elbow.z - DIST_ELBOW_WRIST, 2)
+        if left_wrist.z > left_elbow.z:
+            left_elbow.z = round(left_elbow.z - DIST_ELBOW_WRIST, 2)
         """
         Tocar boca con mano
         """
@@ -782,8 +570,27 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
             right_elbow.z = right_shoulder.z
 
         if is_nearby(left_wrist, left_hip, 60):
-           left_wrist.z = left_shoulder.z
-           left_elbow.z = left_shoulder.z
+            left_wrist.z = left_shoulder.z
+            left_elbow.z = left_shoulder.z
+
+
+        bookmarks[0] = nose
+        bookmarks[1] = eye_right
+        bookmarks[2] = eye_left
+        bookmarks[3] = mouth_right
+        bookmarks[4] = mouth_left
+        # Right arm markers
+        bookmarks[5] = right_shoulder
+        bookmarks[7] = right_elbow
+        bookmarks[9] = right_wrist
+        # Left arm markers
+        bookmarks[6] = left_shoulder
+        bookmarks[8] = left_elbow
+        bookmarks[10] = left_wrist
+        # Hips markers
+        bookmarks[11] = right_hip
+        bookmarks[12] = left_hip
+
 
         for i in range(len(bookmarks)):
             """
@@ -802,13 +609,17 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
                     bookmarks[i].x = buffer_bookmarks[i].x
                 if abs(buffer_bookmarks[i].y - bookmarks[i].y) <= 15:
                     bookmarks[i].y = buffer_bookmarks[i].y
-                    """
-                    Se corrigen aquellos valores anormales
-                    """
+            """
+            Se corrigen aquellos valores anormales
+            """
             if bookmarks[i].z > (right_shoulder.z + left_shoulder.z) / 2:
                 bookmarks[i].z = buffer_bookmarks[i].z
                 if bookmarks[i].z > (right_shoulder.z + left_shoulder.z) / 2:
-                    bookmarks[i].z = (right_shoulder.z + left_shoulder.z) / 2
+                    bookmarks[i].z = round((right_shoulder.z + left_shoulder.z) / 2, 2)
+                if right_shoulder.z * 0.95 < right_hip.z or right_hip.z < right_shoulder.z * 1.05:
+                    bookmarks[i].z = right_shoulder.z
+                if left_shoulder.z * 0.95 < left_hip.z or left_hip.z < left_shoulder.z * 1.05:
+                    bookmarks[i].z = left_shoulder.z
 
     else:
         print("The number of values sent is incorrect")
