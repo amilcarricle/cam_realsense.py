@@ -296,9 +296,8 @@ def upper_middle_extension(arm_angle, aux_angle, arm_aprox, eye, shoulder, elbow
     :return:
     """
     arm = round(calculate_distance(shoulder, wrist), 2)
-    if 145 <= arm_angle:  # <---------------------------------------------------------------Brzo Completamente extendido
+    if 145 <= arm_angle:  # <---------------------------------------------------------------Brazo Completamente extendido
         if 165 <= aux_angle and arm > arm_aprox:
-            print("HOLAAAA")
             if wrist.z > shoulder.z:
                 wrist.z = shoulder.z
             if elbow.z > shoulder.z:
@@ -594,6 +593,17 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
 
         for i in range(len(bookmarks)):
             """
+            Se corrigen aquellos valores anormales
+            """
+            if bookmarks[i].z > (right_shoulder.z + left_shoulder.z) / 2:
+                bookmarks[i].z = buffer_bookmarks[i].z
+                if bookmarks[i].z > (right_shoulder.z + left_shoulder.z) / 2:
+                    bookmarks[i].z = round((right_shoulder.z + left_shoulder.z) / 2, 2)
+                if right_shoulder.z * 0.95 < right_hip.z or right_hip.z < right_shoulder.z * 1.05:
+                    bookmarks[i].z = right_shoulder.z
+                if left_shoulder.z * 0.95 < left_hip.z or left_hip.z < left_shoulder.z * 1.05:
+                    bookmarks[i].z = left_shoulder.z
+            """
             Se busca corregir el efecto de oscilacion en las mediciones de profundidad, todos los valores 
             menores a un 5% entre la medicion anterior y la reciente seran descartados. Se comparan 
             valores en +/- 5 pixeles de x e y.
@@ -609,17 +619,7 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number):
                     bookmarks[i].x = buffer_bookmarks[i].x
                 if abs(buffer_bookmarks[i].y - bookmarks[i].y) <= 15:
                     bookmarks[i].y = buffer_bookmarks[i].y
-            """
-            Se corrigen aquellos valores anormales
-            """
-            if bookmarks[i].z > (right_shoulder.z + left_shoulder.z) / 2:
-                bookmarks[i].z = buffer_bookmarks[i].z
-                if bookmarks[i].z > (right_shoulder.z + left_shoulder.z) / 2:
-                    bookmarks[i].z = round((right_shoulder.z + left_shoulder.z) / 2, 2)
-                if right_shoulder.z * 0.95 < right_hip.z or right_hip.z < right_shoulder.z * 1.05:
-                    bookmarks[i].z = right_shoulder.z
-                if left_shoulder.z * 0.95 < left_hip.z or left_hip.z < left_shoulder.z * 1.05:
-                    bookmarks[i].z = left_shoulder.z
+
 
     else:
         print("The number of values sent is incorrect")
