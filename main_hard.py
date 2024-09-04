@@ -128,125 +128,6 @@ def angle(shoulder, elbow, wrist):
     else:
         return 1
 
-
-
-def forearm_length(marker1, marker2, base, hypotenuse):
-    """ marker1 = shoulder
-        marker2 = elbow
-        base = forearm
-        hypotenuse = distance shoulder hip * 0.5
-    """
-    theta = None
-    if marker1.z < marker2.z or marker2.z == 0:
-        anatomic_distance = hypotenuse * 0.9
-        hypotenuse = anatomic_distance * 0.55
-        relation = base / hypotenuse
-        if relation > 1:
-            marker2.z = marker1.z
-        else:
-            theta = degrees(acos(relation))
-            depth = hypotenuse * (np.sin(np.radians(theta)))
-            marker2.z = marker1.z - (depth * 0.45 / hypotenuse)
-
-
-    return marker2.z, theta
-
-def extended_arm_length(marker1, theta, hypotenuse):
-    """
-    marker1: shoulder
-    theta: angle
-    hypotenuse: distance shoulder hip
-    """
-    depth = hypotenuse * (np.sin(np.radians(theta)))
-    return round(marker1.z - (depth * (ARM_LENGHT) / hypotenuse), 2)
-
-def compare_length(right_arm_aprox, right_shoulder, right_elbow):
-    """
-
-    :param right_arm_aprox:
-    :param right_shoulder:
-    :param right_elbow:
-    :return:
-    """
-    forearm = round(calculate_distance(right_shoulder, right_elbow), 2)
-    forearm_aprox = 0.50 * right_arm_aprox
-    print(f"Fore: {forearm}; Aprox: {forearm_aprox}")
-    return (0.95 * forearm_aprox <= forearm <= forearm_aprox * 1.05)
-
-def correction_wrist_180_180(marker1, marker2, marker3):
-    """
-    Correction of abnormal values in wrist when trunk angle = arm angle >= 150°
-    :param marker1: Shoulder
-    :param marker2: elbow
-    :param marker3: wrist
-    :return:
-    """
-    if marker2.x * 0.95 <= marker3.x <= 1.05 or marker1.x * 0.95 <= marker3.x <= marker1.x:
-        marker3.z = marker2.z
-
-    return marker3.z
-
-
-def complete_abduction(shoulder, elbow, wrist):
-    """
-    Function used to correct abnormal values during complete abduction    :shoulder:
-    elbow: marker (X,Y,Z)
-    wrist: marker (X,Y,Z)
-    return: elbow.z, wrist.z
-    """
-    if 1.02 * shoulder.z < wrist.z:
-        wrist.z = shoulder.z
-    if 1.02 * shoulder.z < elbow.z:
-        if wrist.z < 1.02 * shoulder.z:
-            elbow.z = round((shoulder.z + wrist.z) / 2, 2)
-        else:
-            elbow.z = shoulder.z
-    else:
-        wrist.z = shoulder.z
-        elbow.z = shoulder.z
-
-    return elbow.z, wrist.z
-def correction_elbow(arm_aprox, shoulder, elbow):
-    """
-    :param arm_aprox:
-    :param shoulder:
-    :param elbow:
-    :return:
-    """
-    theta = None
-    forearm = calculate_distance(shoulder, elbow)
-    anatomic_forearm = arm_aprox * 0.55
-    relation = forearm / anatomic_forearm
-    print(f"Relation: {relation}")
-    if relation > 1:
-        elbow.z = shoulder.z
-    else:
-        theta = degrees(acos(relation))
-        depth = anatomic_forearm * (np.sin(np.radians(theta)))
-        elbow.z = round(shoulder.z - (depth * DIST_SHOULDER_ELBOW / anatomic_forearm), 2)
-    return elbow.z, theta
-
-def correction_wrist(arm_aprox, elbow, wrist):
-    """
-
-    :param arm_aprox:
-    :param elbow:
-    :param wrist:
-    :return:
-    """
-    upperarm_projection = calculate_distance(elbow, wrist)
-    anatomic_upperarm = arm_aprox * 0.45
-    relation = upperarm_projection / anatomic_upperarm
-    print(f"Relation: {relation}")
-    if relation > 1:
-        wrist.z = elbow.z - DIST_ELBOW_WRIST
-    else:
-        theta = degrees(acos(relation))
-        depth = anatomic_upperarm * (np.sin(np.radians(theta)))
-        wrist.z = round(elbow.z - (depth * DIST_ELBOW_WRIST/ anatomic_upperarm), 2)
-
-    return wrist.z
-
 #Shoulder correction
 def shoulder_correction(shoulder, shoulder_lim, median_z):
     flag = True
@@ -275,173 +156,6 @@ def shoulder_correction(shoulder, shoulder_lim, median_z):
     return shoulder.z, flag
 
 # Correction of abnormal values due to scattering
-
-def upper_middle_extension(arm_angle, aux_angle, arm_aprox, eye, shoulder, elbow, wrist):
-    """
-    :param arm_angle:
-    :param aux_angle:
-    :param arm_aprox:
-    :param eye:
-    :param shoulder:
-    :param elbow:
-    :param wrist:
-    :return:
-    """
-    arm = round(calculate_distance(shoulder, wrist), 2)
-    if 145 <= arm_angle:  # <---------------------------------------------------------------Brazo Completamente extendido
-        if 165 <= aux_angle and arm > arm_aprox:
-            if wrist.z > shoulder.z:
-                wrist.z = shoulder.z
-            if elbow.z > shoulder.z:
-                elbow.z = shoulder.z
-        elif 100 <= aux_angle < 165:
-            if elbow.z > shoulder.z:
-                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
-                if theta is not None:
-                    #wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
-                    wrist.z = correction_wrist(arm_aprox, elbow, wrist)
-                else:
-                    wrist.z = shoulder.z
-
-    elif 90 <= arm_angle < 145:  # <--------------------------------------------------------Agulo Brzo y Antebrazo > 90°
-        if 170 <= aux_angle:
-            if wrist.z > shoulder.z:
-                wrist.z = shoulder.z
-            if elbow.z > shoulder.z:
-                elbow.z = shoulder.z
-        elif 100 <= aux_angle < 165:
-            if elbow.z > shoulder.z:
-                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
-                if theta is not None:
-                    #wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
-                    wrist.z = correction_wrist(arm_aprox, elbow, wrist)
-                else:
-                    wrist.z = shoulder.z
-
-    elif arm_angle < 90:  # <---------------------------------------------------------------Agulo Brzo y Antebrazo < 90°
-        if 165 <= aux_angle:
-            if wrist.z > shoulder.z:
-                wrist.z = shoulder.z
-            if elbow.z > shoulder.z:
-                elbow.z = shoulder.z
-        elif 100 <= aux_angle < 165:
-            if elbow.z > shoulder.z:
-                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
-                if theta is not None and not is_nearby(wrist, eye, 40):
-                    #wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
-                    wrist.z = correction_wrist(arm_aprox, elbow, wrist)
-                elif is_nearby(wrist, eye, 40):
-                    wrist.z = round((eye.z + shoulder.z) / 2, 2)
-
-    return elbow.z, wrist.z
-
-def middle_extension(arm_angle, arm, arm_aprox, shoulder, elbow, wrist):
-    """
-    :param arm_angle:
-    :param arm:
-    :param arm_aprox:
-    :param shoulder:
-    :param elbow:
-    :param wrist:
-    :return:
-    """
-    if 145 <= arm_angle:  # <-----------------------------------------Brzo Completamente extendido
-        if arm > arm_aprox:
-            if wrist.z > shoulder.z or wrist.z == 0:
-                wrist.z = shoulder.z
-            if elbow.z > shoulder.z:
-                elbow.z = shoulder.z
-        else:
-            if elbow.z > shoulder.z:
-                elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
-                if theta is not None:
-                    wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
-                else:
-                    wrist.z = shoulder.z
-    elif 90 <= arm_angle < 145:
-        if arm_aprox > arm:
-            upperarm = round(calculate_distance(shoulder, elbow), 2)
-            if upperarm >= 0.45 * arm_aprox:
-                if wrist.z > shoulder.z or wrist.z == 0:
-                    wrist.z = shoulder.z
-                if elbow.z > shoulder.z:
-                    elbow.z = shoulder.z
-            else:
-                if elbow.z > shoulder.z or wrist.z == 0:
-                    elbow.z, theta = correction_elbow(arm_aprox, shoulder, elbow)
-                    if theta is not None:
-                        wrist.z = extended_arm_length(shoulder, theta, arm_aprox)
-                    else:
-                        wrist.z = shoulder.z
-    return  elbow.z, wrist.z
-
-def lim_control(marker, windows_size):
-    """
-    :param marker:
-    :param windows_size:
-    :return:
-    """
-    aux_x = STREAM_RES_X - marker.x
-    aux_y = STREAM_RES_Y - marker.y
-    if aux_x < windows_size or aux_y < windows_size:
-        return False
-    else:
-        return True
-
-def calculate_depth(marker1, marker2, depth_image, depth_scale, dist, windows_size):
-    """
-    Calcula la profundidad corregida para los marcadores en el antebrazo y el brazo superior.
-
-    :param marker1: Primer marcador (hombro)
-    :param marker2: Segundo marcador (codo)
-    :param marker3: Tercer marcador (muñeca)
-    :param depth_image: Imagen de profundidad
-    :param depth_scale: Escala de profundidad
-    :param windows_size: Tamaño de la ventana para la corrección de profundidad
-    :return: Profundidad corregida para los marcadores codo y muñeca
-    """
-
-
-    # Segmentación del antebrazo (hombro a codo)
-    fore_segments = []
-    segments = 10
-    for i in range(segments + 1):
-        steps = i / segments
-        x = marker1.x * (1 - steps) + marker2.x * steps
-        y = marker1.y * (1 - steps) + marker2.y * steps
-        fore_segments.append((int(x), int(y)))
-    fore_segments = list(reversed(fore_segments))
-
-
-    # Procesar segmentos del antebrazo
-    cont = len(fore_segments) - 1
-    flag = True
-    z = marker2.z
-    while cont >= 0 and flag:
-        x, y = fore_segments[cont]
-        is_near_x_edge = (0 <= x - windows_size) and (x + windows_size < STREAM_RES_X)
-        is_near_y_edge = (0 <= y - windows_size) and (y + windows_size < STREAM_RES_Y)
-
-        if is_near_x_edge and is_near_y_edge:
-            depth_value = depth_image[max(0, y - windows_size):min(STREAM_RES_Y, y + windows_size + 1),
-                                      max(0, x - windows_size):min(STREAM_RES_X, x + windows_size + 1)]
-            depth_value = depth_value * depth_scale
-            #print(f"values: {depth_value}")
-            min_value = marker1.z - dist
-            max_value = marker1.z
-            condition = (depth_value > min_value) & (depth_value < max_value)
-            filter_value = depth_value[condition]
-            #print(f"filter: {filter_value}")
-            if filter_value.size > 0:
-                correct_value = np.min(filter_value)
-                z = round(correct_value, 2)
-                if marker2.z < marker1.z:
-                    flag = False
-        cont -= 1
-    new_marker2 = Bookmark(x, y, z)
-
-    return new_marker2
-
 def calculate_z(marker1, marker2, dist_right_shoulder_hip, depth_scale):
     """
 
@@ -460,7 +174,6 @@ def calculate_z(marker1, marker2, dist_right_shoulder_hip, depth_scale):
         return 0
     else:
         return round(marker1.z - np.sqrt(c), 2)
-
 
 def from_pixels_to_meters(pix_distance, dist_right_shoulder_hip):
     """
@@ -542,18 +255,11 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number, depth_image, de
         dist_right_shoulder_hip = calculate_distance(right_shoulder, right_hip)
         right_forearm = calculate_distance(right_shoulder, right_elbow)
         right_upperarm = calculate_distance(right_elbow, right_wrist)
-        aux_r_elbow = calculate_depth(right_shoulder, right_elbow, depth_image, depth_scale, DIST_SHOULDER_ELBOW,
-                                      50)
-        aux_right_forearm = calculate_distance(right_shoulder, aux_r_elbow)
-        aux_r_wrist = calculate_depth(right_shoulder, right_wrist, depth_image, depth_scale, DIST_ELBOW_WRIST,
-                                      50)
-        aux_right_upperarm = calculate_distance(right_elbow, aux_r_wrist)
 
         # We convert these ARM segments to meters
         right_forearm = from_pixels_to_meters(right_forearm, dist_right_shoulder_hip)
         right_upperarm = from_pixels_to_meters(right_upperarm, dist_right_shoulder_hip)
-        aux_right_forearm = from_pixels_to_meters(aux_right_forearm, dist_right_shoulder_hip)
-        aux_right_upperarm = from_pixels_to_meters(aux_right_upperarm, dist_right_shoulder_hip)
+
         """
         En las siguenientes lineas se busca corregir los valores pertenecientes a los marcadores de codo y munieca. 
         Por lo tanto, se busca ir corrigiendo todos los errores en cada pocicion de los brazos.
@@ -639,75 +345,83 @@ def correct_values(bookmarks, buffer_bookmarks, sequence_number, depth_image, de
             right_elbow.z = calculate_z(right_shoulder, right_elbow, dist_right_shoulder_hip, depth_scale)
         if right_wrist.z > right_shoulder.z:
             right_wrist.z = calculate_z(right_elbow, right_wrist, dist_right_shoulder_hip, depth_scale)
-        """
-        if (DIST_SHOULDER_ELBOW - 0.05 <= right_forearm <= DIST_SHOULDER_ELBOW + 0.05 ):
-            right_elbow.z = right_shoulder.z
-            right_wrist.z = right_shoulder.z
-            msj = f"{right_forearm}"
-        
-        else:
-            if right_elbow.z > right_shoulder.z:
-                right_elbow.z = calculate_z(right_shoulder, right_elbow, dist_right_shoulder_hip, depth_scale)
-                right_wrist.z = calculate_z(right_elbow, right_wrist, dist_right_shoulder_hip, depth_scale)
-                if right_forearm == aux_right_forearm:
-                     if aux_r_elbow.z < right_shoulder.z:
-                        if aux_r_elbow.z < right_elbow.z:
-                            right_elbow.z = aux_r_elbow.z
-                            right_wrist.z = calculate_z(right_elbow, right_wrist, dist_right_shoulder_hip, depth_scale)
-                elif aux_right_forearm == 0:
-                    if aux_r_wrist.z < right_shoulder.z:
-                        right_elbow.z = aux_r_wrist.z
-                        right_wrist.z = calculate_z(right_elbow, right_wrist, dist_right_shoulder_hip, depth_scale)
-            elif right_wrist.z > right_shoulder.z:
-                right_wrist.z = calculate_z(right_elbow, right_wrist, dist_right_shoulder_hip, depth_scale)
-            elif is_nearby(right_wrist, right_hip, 50):
-                right_elbow.z, right_wrist.z = right_shoulder.z
-        if is_nearby(right_wrist, eye_right, 50):
-            right_elbow.z = right_shoulder.z
-            right_wrist.z = right_shoulder.z
-        """
+
+        left_arm_angle = round(angle(left_shoulder, left_elbow, left_wrist), 2)
         left_trunk_angle = round(angle(left_hip, left_shoulder, left_elbow), 2)
         dist_left_shoulder_hip = calculate_distance(left_shoulder, left_hip)
         left_forearm = calculate_distance(left_shoulder, left_elbow)
         left_upperarm = calculate_distance(left_elbow, left_wrist)
-        aux_l_elbow = calculate_depth(left_shoulder, left_elbow, depth_image, depth_scale, DIST_SHOULDER_ELBOW,
-                                      50)
-        aux_left_forearm = calculate_distance(left_shoulder, aux_l_elbow)
-        aux_l_wrist = calculate_depth(left_shoulder, left_wrist, depth_image, depth_scale, DIST_ELBOW_WRIST,
-                                      50)
-        aux_left_upperarm = calculate_distance(left_elbow, aux_l_wrist)
 
         # We convert these ARM segments to meters
         left_forearm = from_pixels_to_meters(left_forearm, dist_left_shoulder_hip)
         left_upperarm = from_pixels_to_meters(left_upperarm, dist_left_shoulder_hip)
-        aux_left_forearm = from_pixels_to_meters(aux_left_forearm, dist_left_shoulder_hip)
-        aux_right_upperarm = from_pixels_to_meters(aux_left_upperarm, dist_left_shoulder_hip)
+        """
+        En las siguenientes lineas se busca corregir los valores pertenecientes a los marcadores de codo y munieca. 
+        Por lo tanto, se busca ir corrigiendo todos los errores en cada pocicion de los brazos.
+        Partiremos de una extencion conmpleta del brazo, en las mismas los marcadores estan formando un angulo mayor a 
+        150°. Esto se cumole para las estencion completa lateral y la frontal parcial.
+        """
+        if left_arm_angle >= 150:
 
-        if (DIST_SHOULDER_ELBOW - 0.05 <= left_forearm <= DIST_SHOULDER_ELBOW and left_trunk_angle < 110):
-            left_elbow.z = left_shoulder.z
-            left_wrist.z = left_shoulder.z
-        else:
-            if left_elbow.z > left_shoulder.z:
+            # Extension completa lateral
+            if (DIST_ELBOW_WRIST + DIST_SHOULDER_ELBOW) * 0.8 <= left_forearm + left_upperarm <= (
+                    DIST_ELBOW_WRIST + DIST_SHOULDER_ELBOW) * 1.2:
+                if left_elbow.z > left_shoulder.z:
+                    left_elbow.z = left_shoulder.z
+                if left_wrist.z > left_shoulder.z:
+                    left_wrist.z = left_shoulder.z
+                msj = "HOLA"
+            # Extension completa intermedia
+            else:
                 left_elbow.z = calculate_z(left_shoulder, left_elbow, dist_left_shoulder_hip, depth_scale)
                 left_wrist.z = calculate_z(left_elbow, left_wrist, dist_left_shoulder_hip, depth_scale)
-                if left_forearm == aux_left_forearm:
-                    if aux_l_elbow.z < left_shoulder.z:
-                        if aux_l_elbow.z < left_elbow.z:
-                            left_elbow.z = aux_l_elbow.z
-                            left_wrist.z = calculate_z(left_elbow, left_wrist, dist_left_shoulder_hip, depth_scale)
-                elif aux_left_forearm == 0:
-                    if aux_l_wrist.z < left_shoulder.z:
-                        left_elbow.z = aux_l_wrist.z
-                        left_wrist.z = calculate_z(left_elbow, left_wrist, dist_left_shoulder_hip, depth_scale)
-            elif left_wrist.z > left_shoulder.z:
+
+
+        if is_nearby(left_shoulder, left_wrist, 50) or is_nearby(left_shoulder, left_elbow, 50):
+            if left_wrist.z >= left_shoulder.z:
+                left_wrist.z = round(left_shoulder.z - (DIST_SHOULDER_ELBOW + DIST_ELBOW_WRIST), 2)
+            if left_elbow.z >= left_shoulder.z:
+                left_elbow.z = round(left_shoulder.z - DIST_SHOULDER_ELBOW, 2)
+                if left_elbow.z < left_wrist.z:
+                    left_elbow.z = round((left_shoulder.z + left_wrist.z) / 2, 2)
+            msj = f"{left_elbow.z} // {left_wrist.z}"
+
+        # Gesto de saludo. Extencion lateral
+        if left_arm_angle < 150 and left_trunk_angle > 60:
+            if (DIST_ELBOW_WRIST + DIST_SHOULDER_ELBOW) * 0.8 <= left_forearm + left_upperarm <= (
+                    DIST_ELBOW_WRIST + DIST_SHOULDER_ELBOW) * 1.2:
+                if left_elbow.z > left_shoulder.z:
+                    left_elbow.z = left_shoulder.z
+                if left_wrist.z > left_shoulder.z:
+                    left_wrist.z = left_shoulder.z
+    
+            if left_upperarm < 0.85 * DIST_ELBOW_WRIST and not is_nearby(left_wrist, eye_left, 20):
+                left_elbow.z = left_shoulder.z
                 left_wrist.z = calculate_z(left_elbow, left_wrist, dist_left_shoulder_hip, depth_scale)
-            elif is_nearby(left_wrist, left_hip, 50):
-                left_elbow.z, left_wrist.z = left_shoulder.z
-        if is_nearby(left_wrist, eye_left, 50):
-            left_elbow.z = left_shoulder.z
-            left_wrist.z = left_shoulder.z
+                msj = "OK"
+          
+            if is_nearby(left_wrist, eye_left, 20) and is_nearby(left_shoulder, left_elbow, 40):
+                left_wrist.z = median_z
+                left_elbow.z = calculate_z(left_shoulder, left_elbow, dist_left_shoulder_hip, depth_scale)
+                msj = f"{left_elbow.z} // {left_wrist.z}"
 
+       
+        if left_arm_angle < 150 and left_trunk_angle < 90:
+            if (DIST_ELBOW_WRIST + DIST_SHOULDER_ELBOW) * 0.8 <= left_forearm + left_upperarm <= (
+                    DIST_ELBOW_WRIST + DIST_SHOULDER_ELBOW) * 1.2:
+                if left_elbow.z > left_shoulder.z:
+                    left_elbow.z = left_shoulder.z
+                if left_wrist.z > left_shoulder.z:
+                    left_wrist.z = left_shoulder.z
+            if left_upperarm < 0.85 * DIST_ELBOW_WRIST and not is_nearby(left_wrist, eye_left, 20):
+                left_elbow.z = left_shoulder.z
+                left_wrist.z = calculate_z(left_elbow, left_wrist, dist_left_shoulder_hip, depth_scale)
+                msj = "OK"
 
+        if left_elbow.z > left_shoulder.z:
+            left_elbow.z = calculate_z(left_shoulder, left_elbow, dist_left_shoulder_hip, depth_scale)
+        if left_wrist.z > left_shoulder.z:
+            left_wrist.z = calculate_z(left_elbow, left_wrist, dist_left_shoulder_hip, depth_scale)
 
         bookmarks[0] = nose
         bookmarks[1] = eye_right
@@ -760,8 +474,6 @@ def draw_pose_markers_on_depth_image_from_bookmarks(depth_image, bookmarks):
             cv2.circle(depth_image, (x, STREAM_RES_Y - y), 5, (0, 255, 0), -1)
             cv2.putText(depth_image, f'{z:.2f}', (x, STREAM_RES_Y - y),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-
 
 def draw_lines(image):
     cell_height = STREAM_RES_Y // NUMBER_ROWS
