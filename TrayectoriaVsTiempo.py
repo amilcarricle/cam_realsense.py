@@ -13,79 +13,59 @@ class Punto3D:
     def __repr__(self):
         return f"Punto3D(x={self.x}, y={self.y}, z={self.z})"
 
-
-# Función para cargar los datos de un archivo .txt y organizar los marcadores en una lista
 def cargar_datos_txt(archivo):
+    """
+    :param archivo:
+    :return: datos
+    """
     datos = []
     with open(archivo, 'r') as file:
         for line in file:
-            # Convertir la línea en una lista de 39 elementos
             elementos = list(map(float, line.strip().split(',')))
-            # Crear una lista de puntos 3D para esa fila
             puntos = [Punto3D(elementos[i], elementos[i + 1], elementos[i + 2]) for i in range(0, 39, 3)]
-            datos.append(puntos)  # Añadir los 13 puntos (marcadores) a la lista de datos
+            datos.append(puntos)
     return datos
 
+def calcular_distancia(punto_1, punto_2):
+    """
+    :param punto_1:
+    :param punto_2:
+    :return: distancia euclidea
+    """
+    return np.sqrt((punto_1.x - punto_2.x) ** 2 + (punto_1.y - punto_2.y) ** 2 + (punto_1.z - punto_2.z) ** 2)
 
-# Función para graficar la trayectoria del marcador del hombro en 3D y en los diferentes planos con tiempo
-def graficar_trayectoria_hombro_con_tiempo(datos, fps=30):
-    # Inicializar listas para almacenar las coordenadas del hombro y el tiempo
-    x_hombro = []
-    y_hombro = []
-    z_hombro = []
-    tiempo = [i / fps for i in range(len(datos))]  # Lista de tiempo en segundos
+def calcular_angulos(marcador_1, marcador_2, marcador_3):
+    a = calcular_distancia(marcador_1, marcador_2)
+    b = calcular_distancia(marcador_3, marcador_2)
+    c = calcular_distancia(marcador_3, marcador_1)
 
-    # Extraer los datos del hombro en cada fila
-    for fila in datos:
-        hombro = fila[5]  # Suponemos que el hombro es el primer marcador
-        x_hombro.append(hombro.x)
-        y_hombro.append(hombro.y)
-        z_hombro.append(hombro.z)
+    theta = (a ** 2 + b ** 2 - c ** 2) / (2 * a * b)
+    #Aseguro que theta este entre valores de 1 y -1
+    theta = np.clip(theta, -1,1)
+    angulo = np.arccos(theta)
+    return np.degrees(angulo)
+def main():
+    angulos_hombro = []
+    datos = cargar_datos_txt('fulanito_2.txt')
 
-    # Crear la figura
-    fig = plt.figure(figsize=(10, 10))
-
-    # Subplot para la trayectoria en 3D con el tiempo
-    ax1 = fig.add_subplot(221, projection='3d')
-    ax1.plot(tiempo, x_hombro, z_hombro, marker='o', color='b')
-    ax1.set_title('Trayectoria del Hombro en 3D (Tiempo vs X y Z)')
-    ax1.set_xlabel('Tiempo (segundos)')
-    ax1.set_ylabel('X (ancho del cuerpo)')
-    ax1.set_zlabel('Z (distancia a la cámara)')
-    ax1.grid(True)
-
-    # Subplot para la trayectoria en el plano frontal (coronal): X vs Z con tiempo
-    ax2 = fig.add_subplot(222)
-    ax2.plot(tiempo, x_hombro, marker='o', color='r')
-    ax2.set_title('Plano Frontal (Coronal) - Tiempo vs X')
-    ax2.set_xlabel('Tiempo (segundos)')
-    ax2.set_ylabel('X (ancho del cuerpo)')
-    ax2.grid(True)
-
-    # Subplot para la trayectoria en el plano sagital: Y vs Z con tiempo
-    ax3 = fig.add_subplot(223)
-    ax3.plot(tiempo, y_hombro, marker='o', color='g')
-    ax3.set_title('Plano Sagital - Tiempo vs Y')
-    ax3.set_xlabel('Tiempo (segundos)')
-    ax3.set_ylabel('Y (altura del cuerpo)')
-    ax3.grid(True)
-
-    # Subplot para la trayectoria en el plano transversal: X vs Y con tiempo
-    ax4 = fig.add_subplot(224)
-    ax4.plot(tiempo, z_hombro, marker='o', color='b')
-    ax4.set_title('Plano Transversal - Tiempo vs Z')
-    ax4.set_xlabel('Tiempo (segundos)')
-    ax4.set_ylabel('Z (distancia a la cámara)')
-    ax4.grid(True)
-
-    # Mostrar los gráficos
-    plt.tight_layout()
+    for marcador in datos:
+        hombro = marcador[5]
+        codo = marcador[7]
+        cadera = marcador[11]
+        angulo = calcular_angulos(cadera, hombro, codo)
+        angulos_hombro.append(angulo)
+    print(f"{len(datos)}")
+    #print(f"{len(hombro)}")
+    print(f"{len(angulos_hombro)}")
+    duracion_total = len(angulos_hombro) / 30  # Duración total en segundos
+    tiempos = np.linspace(0, duracion_total * 5.86, len(angulos_hombro))
+    print(f"{len(angulos_hombro) * 5.86 / 30}")
+    plt.plot(tiempos, angulos_hombro, marker = 'o', linestyle = '-', color = 'g')
+    plt.title("Angulo de Hombro a lo largo del tiempo")
+    plt.ylabel("Angulos del Hombro [°]")
+    plt.xlabel("Datos")
+    plt.grid(True)
     plt.show()
 
-
-# Cargar los datos del archivo
-datos = cargar_datos_txt('receivedData_7.txt')
-
-# Graficar la trayectoria del marcador del hombro con el tiempo en segundos
-graficar_trayectoria_hombro_con_tiempo(datos, fps=30)
-
+if __name__ == "__main__":
+    main()
