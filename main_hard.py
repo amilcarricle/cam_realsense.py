@@ -497,6 +497,8 @@ def main():
     print(f'Depth Scale: {depth_scale}')
     realsense_camera.startCapture()
     buffer_bookmarks = []
+    output_file = "marcadores_corregidos.txt"
+
     try:
         x_aux, y_aux, z_aux = None, None, None
 
@@ -554,6 +556,10 @@ def main():
                     sequence_number += 1
                     buffer_bookmarks = bookmarks
 
+                    with open(output_file, "a") as file:
+                        line = ",".join(
+                            str(coord) for bookmark in bookmarks for coord in (bookmark.x, bookmark.y, bookmark.z))
+                        file.write(line + "\n")
 
                     # Send UDP message with bookmarks
                     send_udp_message(sequence_number, [coord for bookmark in bookmarks for coord in
